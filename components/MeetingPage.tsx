@@ -186,7 +186,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       let isListening = false;
 
       recognition.onstart = () => {
-        console.log('Speech recognition started');
+        console.log('🎤 [SPEECH] Recognition started - listening for voice input');
         isListening = true;
         addTranscript({
           id: Date.now().toString(),
@@ -212,6 +212,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
         // Show final transcript
         if (finalTranscript.trim()) {
+          console.log('🎤 [SPEECH] Raw transcript received:', finalTranscript.trim());
+          
           addTranscript({
             id: Date.now().toString(),
             text: finalTranscript.trim(),
@@ -224,21 +226,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           const recentContext = transcript.slice(-3).map(t => t.text).join(' ').toLowerCase();
           const currentAndRecent = (recentContext + ' ' + finalTranscript).toLowerCase();
           
+          console.log('🔍 [TRIGGER] Checking for Hero trigger in:', finalTranscript);
+          console.log('🔍 [TRIGGER] Recent context:', recentContext);
+          
           if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero/) || 
               currentAndRecent.match(/(hey|hi|hello)\s+hero/) ||
               finalTranscript.toLowerCase().includes('hero') ||
               (finalTranscript.toLowerCase().includes('hero') && recentContext.includes('what'))) {
-            console.log('Hero trigger detected:', finalTranscript, 'Context:', recentContext);
+            console.log('✅ [TRIGGER] Hero trigger detected! Sending to backend...');
+            console.log('📝 [TRIGGER] Full message:', finalTranscript);
+            console.log('📝 [TRIGGER] Context:', recentContext);
             
             // Use the full context for better understanding
             const fullContext = currentAndRecent.includes('hero') ? currentAndRecent : finalTranscript;
             handleHeroTrigger(fullContext);
+          } else {
+            console.log('❌ [TRIGGER] No Hero trigger found in transcript');
           }
         }
       };
 
       recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
+        console.error('❌ [SPEECH] Recognition error:', event.error);
         if (event.error === 'not-allowed') {
           addTranscript({
             id: Date.now().toString(),
@@ -248,25 +257,29 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             isTranscript: true
           });
         } else if (event.error === 'aborted') {
-          // Don't restart immediately on abort - let the onend handler do it
-          console.log('Speech recognition aborted, will restart via onend');
+          console.log('⚠️ [SPEECH] Recognition aborted, will restart via onend handler');
+        } else if (event.error === 'network') {
+          console.warn('🌐 [SPEECH] Network error in speech recognition - connection issues');
+        } else if (event.error === 'no-speech') {
+          console.log('🔇 [SPEECH] No speech detected - timeout reached');
         }
       };
 
       recognition.onend = () => {
-        console.log('Speech recognition ended');
+        console.log('🔴 [SPEECH] Recognition ended - preparing to restart');
         isListening = false;
         // Only restart if room is connected and not manually stopped
         if (room && room.state === 'connected') {
           setTimeout(() => {
             try {
               if (!isListening) {
+                console.log('🔄 [SPEECH] Restarting speech recognition...');
                 recognition.start();
               }
             } catch (error) {
-              console.log('Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
+              console.warn('⚠️ [SPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
             }
-          }, 500); // Reduced timeout to 500ms
+          }, 1000); // Increased timeout to 1000ms for stability
         }
       };
 
@@ -300,11 +313,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       });
       
       const data = await response.json();
-      console.log('Hero API response:', data);
+      console.log('\n📥 [FRONTEND] === HERO RESPONSE RECEIVED ===');
+      console.log('📥 [FRONTEND] Full API response:', data);
       
       if (data.success && data.response) {
+        console.log('✅ [FRONTEND] Hero response successful!');
+        
         // Strip markdown formatting from response
         const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+        console.log('🧼 [FRONTEND] Cleaned response text:', cleanResponse);
         
         addMessage({
           id: Date.now().toString(),
@@ -315,19 +332,34 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         
         // Play TTS audio if available
         if (data.audioBuffer) {
+          console.log('🎵 [FRONTEND] === PLAYING TTS AUDIO ===');
+          console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
+          console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
+          
           try {
             const audioContext = new AudioContext();
+            console.log('🎵 [FRONTEND] Creating audio context...');
+            
             const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
+            console.log('🎵 [FRONTEND] Decoded audio data size:', audioData.length, 'bytes');
+            
             const audioBuffer = await audioContext.decodeAudioData(audioData.buffer);
+            console.log('🎵 [FRONTEND] Audio buffer created successfully');
+            
             const source = audioContext.createBufferSource();
             source.buffer = audioBuffer;
             source.connect(audioContext.destination);
             source.start();
+            
+            console.log('✅ [FRONTEND] Audio playback started!');
           } catch (audioError) {
-            console.warn('Error playing TTS audio:', audioError);
+            console.warn('❌ [FRONTEND] Error playing TTS audio:', audioError);
           }
+        } else {
+          console.log('⚠️ [FRONTEND] No audio buffer provided in response');
         }
       } else if (data.success && data.message) {
+        console.log('💬 [FRONTEND] Debug message from API:', data.message);
         // Show debug message in transcript
         addTranscript({
           id: Date.now().toString(),
@@ -336,7 +368,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           timestamp: Date.now(),
           isTranscript: true
         });
+      } else {
+        console.log('❌ [FRONTEND] Unexpected response format:', data);
       }
+      
+      console.log('🏁 [FRONTEND] === HERO PIPELINE COMPLETE ===\n');
     } catch (error) {
       console.error('Error handling Hero trigger:', error);
     }
