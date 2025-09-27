@@ -220,10 +220,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             isTranscript: true
           });
 
-          // Check for Hero trigger phrases (case insensitive)
-          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero/)) {
-            console.log('Hero trigger detected:', finalTranscript);
-            handleHeroTrigger(finalTranscript);
+          // Check for Hero trigger phrases (case insensitive) - check both current and recent context
+          const recentContext = transcript.slice(-3).map(t => t.text).join(' ').toLowerCase();
+          const currentAndRecent = (recentContext + ' ' + finalTranscript).toLowerCase();
+          
+          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero/) || 
+              currentAndRecent.match(/(hey|hi|hello)\s+hero/) ||
+              finalTranscript.toLowerCase().includes('hero') ||
+              (finalTranscript.toLowerCase().includes('hero') && recentContext.includes('what'))) {
+            console.log('Hero trigger detected:', finalTranscript, 'Context:', recentContext);
+            
+            // Use the full context for better understanding
+            const fullContext = currentAndRecent.includes('hero') ? currentAndRecent : finalTranscript;
+            handleHeroTrigger(fullContext);
           }
         }
       };

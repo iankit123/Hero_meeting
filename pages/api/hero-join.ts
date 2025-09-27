@@ -86,9 +86,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     console.error('Error in hero-join API:', error);
-    res.status(500).json({ 
-      error: 'Failed to process Hero bot request',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
+    
+    // If it's an AI service error, provide a fallback response
+    if (error instanceof Error && error.message.includes('Service Unavailable')) {
+      res.status(200).json({
+        success: true,
+        response: "I'm Hero, your AI meeting assistant! I'm having trouble connecting to my AI brain right now, but I can hear you clearly. Please try again in a moment, or I'll be ready to help once the AI service is back online.",
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to process Hero bot request',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
   }
 }
