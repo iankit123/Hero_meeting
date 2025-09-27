@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track } from 'livekit-client';
+import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
 import ChatPanel, { ChatMessage } from './ChatPanel';
 
 interface MeetingPageProps {
@@ -16,7 +16,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [transcript, setTranscript] = useState<ChatMessage[]>([]);
+  const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
+  const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
   const videoRef = useRef<HTMLDivElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -109,6 +115,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Connect to room
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
       setRoom(newRoom);
+      
+      // Enable user's camera and microphone
+      await enableLocalMedia(newRoom);
+      
+      // Start transcription
+      startTranscription(newRoom);
 
     } catch (error) {
       console.error('Error initializing room:', error);
@@ -119,6 +131,99 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   const addMessage = (message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
+  };
+  
+  const addTranscript = (message: ChatMessage) => {
+    setTranscript(prev => [...prev, message]);
+    // Also add to general messages for context
+    addMessage({ ...message, isTranscript: true });
+  };
+  
+  const enableLocalMedia = async (room: Room) => {
+    try {
+      // Create and publish video track
+      const videoTrack = await createLocalVideoTrack();
+      await room.localParticipant.publishTrack(videoTrack);
+      setLocalVideoTrack(videoTrack);
+      
+      // Attach video to local preview
+      if (localVideoRef.current) {
+        videoTrack.attach(localVideoRef.current);
+      }
+      
+      // Create and publish audio track
+      const audioTrack = await createLocalAudioTrack();
+      await room.localParticipant.publishTrack(audioTrack);
+      setLocalAudioTrack(audioTrack);
+      
+    } catch (error) {
+      console.error('Error enabling local media:', error);
+    }
+  };
+  
+  const startTranscription = async (room: Room) => {
+    try {
+      // TODO: Implement server-side transcription proxy for security
+      // For now, add demo transcript to show the UI works
+      console.log('Transcription will be implemented server-side for security');
+      
+      // Add a demo transcript to show the UI works
+      setTimeout(() => {
+        addTranscript({
+          id: Date.now().toString(),
+          text: 'Welcome to Hero Meet! This is a demo transcript. Say "Hey Hero" to test the AI assistant.',
+          speaker: '0',
+          timestamp: Date.now(),
+          isTranscript: true
+        });
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error starting transcription:', error);
+    }
+  };
+  
+  const handleHeroTrigger = async (transcript: string) => {
+    try {
+      const response = await fetch('/api/hero-join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomName,
+          message: transcript,
+          context: messages.slice(-5).map(m => m.text).join(' ') + ' ' + transcript
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.success && data.response) {
+        addMessage({
+          id: Date.now().toString(),
+          text: data.response,
+          timestamp: Date.now(),
+          isHero: true
+        });
+        
+        // Play TTS audio if available
+        if (data.audioBuffer) {
+          try {
+            const audioContext = new AudioContext();
+            const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
+            const audioBuffer = await audioContext.decodeAudioData(audioData.buffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+          } catch (audioError) {
+            console.warn('Error playing TTS audio:', audioError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error handling Hero trigger:', error);
+    }
   };
 
   const handleSendMessage = async (message: string) => {
@@ -133,7 +238,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
     // Send message to backend for Hero bot processing
     try {
-      await fetch('/api/hero-join', {
+      const response = await fetch('/api/hero-join', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,6 +249,32 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           context: messages.slice(-5).map(m => m.text).join(' '), // Last 5 messages as context
         }),
       });
+
+      const data = await response.json();
+      if (data.success && data.response) {
+        // Add Hero AI response to chat
+        addMessage({
+          id: Date.now().toString(),
+          text: data.response,
+          timestamp: Date.now(),
+          isHero: true
+        });
+
+        // Play TTS audio if available
+        if (data.audioBuffer) {
+          try {
+            const audioContext = new AudioContext();
+            const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
+            const audioBuffer = await audioContext.decodeAudioData(audioData.buffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+          } catch (audioError) {
+            console.warn('Error playing TTS audio:', audioError);
+          }
+        }
+      }
     } catch (error) {
       console.error('Error sending message to Hero bot:', error);
     }
@@ -164,10 +295,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     if (!room) return;
     
     try {
-      const audioTrack = room.localParticipant.audioTrackPublications.values().next().value;
-      if (audioTrack && audioTrack.track) {
-        (audioTrack.track as any).setEnabled(!(audioTrack.track as any).isEnabled);
-      }
+      await room.localParticipant.setMicrophoneEnabled(!isAudioEnabled);
+      setIsAudioEnabled(!isAudioEnabled);
     } catch (error) {
       console.error('Error toggling audio:', error);
     }
@@ -177,10 +306,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     if (!room) return;
     
     try {
-      const videoTrack = room.localParticipant.videoTrackPublications.values().next().value;
-      if (videoTrack && videoTrack.track) {
-        (videoTrack.track as any).setEnabled(!(videoTrack.track as any).isEnabled);
-      }
+      await room.localParticipant.setCameraEnabled(!isVideoEnabled);
+      setIsVideoEnabled(!isVideoEnabled);
     } catch (error) {
       console.error('Error toggling video:', error);
     }
@@ -270,13 +397,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button onClick={leaveMeeting} className="btn btn-secondary" style={{ fontSize: '14px' }}>
-              Exit Interview
+              Leave Meeting
             </button>
             <button 
               onClick={copyMeetingLink}
               className="copy-link-btn"
             >
-              {copied ? 'Copied!' : 'Copy Candidate Link'}
+              {copied ? 'Copied!' : 'Copy Meeting Link'}
             </button>
           </div>
         </div>
@@ -298,36 +425,84 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </div>
-            <p>Waiting for candidate to join...</p>
+            <p>Waiting for others to join...</p>
           </div>
         </div>
 
-        {/* Video Preview */}
-        <div className="video-preview" ref={videoRef}>
+        {/* Video Preview - User's own camera */}
+        <div className="video-preview">
+          <video 
+            ref={localVideoRef}
+            autoPlay 
+            muted 
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              borderRadius: '8px',
+              backgroundColor: '#374151'
+            }}
+          />
           <div style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#9ca3af',
-            fontSize: '14px'
+            position: 'absolute',
+            bottom: '8px',
+            left: '8px',
+            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px',
+            fontWeight: '600'
           }}>
             You
           </div>
         </div>
+        
+        {/* Remote participants video area */}
+        <div ref={videoRef} style={{
+          position: 'absolute',
+          top: '80px',
+          left: '20px',
+          right: '20px',
+          bottom: '200px',
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '16px'
+        }}>
+          {/* Remote participant videos will be attached here */}
+        </div>
 
         {/* Controls */}
         <div className="controls">
-          <button onClick={toggleAudio} className="control-btn">
+          <button 
+            onClick={toggleAudio} 
+            className={`control-btn ${!isAudioEnabled ? 'muted' : ''}`}
+            style={{
+              backgroundColor: !isAudioEnabled ? '#dc2626' : '#374151'
+            }}
+          >
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              {isAudioEnabled ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+              )}
             </svg>
           </button>
           
-          <button onClick={toggleVideo} className="control-btn">
+          <button 
+            onClick={toggleVideo} 
+            className={`control-btn ${!isVideoEnabled ? 'muted' : ''}`}
+            style={{
+              backgroundColor: !isVideoEnabled ? '#dc2626' : '#374151'
+            }}
+          >
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              {isVideoEnabled ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21" />
+              )}
             </svg>
           </button>
           
@@ -337,9 +512,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </svg>
           </button>
           
-          <button className="control-btn">
+          <button onClick={leaveMeeting} className="control-btn" style={{ backgroundColor: '#dc2626' }}>
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
             </svg>
           </button>
         </div>
@@ -347,108 +522,249 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
       {/* Sidebar */}
       <div className="sidebar">
-        <div className="sidebar-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>
-              Follow-Up Suggestions
-            </h3>
-            <button className="btn btn-secondary" style={{ fontSize: '12px', padding: '6px 12px' }}>
-              Get Questions
-            </button>
-          </div>
+        {/* Meeting Attendees */}
+        <div className="sidebar-section" style={{ borderBottom: '1px solid #374151', paddingBottom: '16px', marginBottom: '16px' }}>
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
+            Meeting Attendees ({participants.length + 1})
+          </h3>
+          
+          {/* Current User */}
           <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            padding: '8px',
             backgroundColor: '#374151',
             borderRadius: '8px',
-            padding: '12px',
-            fontSize: '14px',
-            color: '#d1d5db'
+            marginBottom: '8px'
           }}>
-            Custom Instructions
-            <br />
-            <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-              e.g., Ask more technical questions...
-            </span>
-          </div>
-        </div>
-
-        <div className="sidebar-content">
-          <div className="sidebar-section">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-              <div style={{
-                width: '12px',
-                height: '12px',
-                backgroundColor: '#22c55e',
-                borderRadius: '50%'
-              }}></div>
-              <h3>Live Transcription</h3>
-              <button className="btn btn-secondary" style={{ fontSize: '12px', padding: '4px 8px' }}>
-                ON
-              </button>
-            </div>
-            
             <div style={{
+              width: '32px',
+              height: '32px',
+              backgroundColor: '#22c55e',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '14px',
+              fontWeight: '600',
+              color: 'white'
+            }}>
+              Y
+            </div>
+            <div>
+              <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>
+                You (Host)
+              </div>
+              <div style={{ color: '#9ca3af', fontSize: '12px' }}>
+                {isVideoEnabled ? '📹' : '📹🚫'} {isAudioEnabled ? '🎤' : '🎤🚫'}
+              </div>
+            </div>
+          </div>
+          
+          {/* Remote Participants */}
+          {participants.map((participant, index) => (
+            <div key={participant.identity} style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              padding: '8px',
               backgroundColor: '#374151',
               borderRadius: '8px',
-              padding: '16px',
-              textAlign: 'center'
+              marginBottom: '8px'
             }}>
               <div style={{
                 width: '32px',
                 height: '32px',
-                backgroundColor: '#4b5563',
+                backgroundColor: participant.identity === 'hero-bot' ? '#2563eb' : '#f59e0b',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 12px auto'
+                fontSize: '14px',
+                fontWeight: '600',
+                color: 'white'
               }}>
-                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                </svg>
+                {participant.identity === 'hero-bot' ? '🤖' : participant.identity.charAt(0).toUpperCase()}
               </div>
-              <p style={{ color: '#9ca3af', fontSize: '14px', margin: '0' }}>
-                No transcript yet...
-              </p>
-              <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '4px', margin: '4px 0 0 0' }}>
-                Live transcription will start when there is audio
-              </p>
+              <div>
+                <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>
+                  {participant.identity === 'hero-bot' ? 'Hero AI Assistant' : `Participant ${index + 1}`}
+                </div>
+                <div style={{ color: '#9ca3af', fontSize: '12px' }}>
+                  {participant.identity === 'hero-bot' ? '🤖 AI' : 'Online'}
+                </div>
+              </div>
             </div>
+          ))}
+        </div>
 
-            {messages.length > 0 && (
-              <div style={{ marginTop: '16px' }}>
-                {messages.map((message) => (
-                  <div
-                    key={message.id}
-                    style={{
-                      backgroundColor: message.isHero ? '#1e40af' : '#374151',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      marginBottom: '8px',
-                      fontSize: '14px'
-                    }}
-                  >
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: '4px'
-                    }}>
-                      <span style={{ fontWeight: '600', fontSize: '12px' }}>
-                        {message.isHero ? 'Hero AI' : 'You'}
-                      </span>
-                      <span style={{ fontSize: '11px', color: '#9ca3af' }}>
-                        {new Date(message.timestamp).toLocaleTimeString([], { 
-                          hour: '2-digit', 
-                          minute: '2-digit' 
-                        })}
-                      </span>
-                    </div>
-                    <p style={{ margin: '0', color: 'white' }}>{message.text}</p>
-                  </div>
-                ))}
+        {/* Live Transcription */}
+        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              backgroundColor: '#22c55e',
+              borderRadius: '50%'
+            }}></div>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Live Transcription</h3>
+          </div>
+          
+          <div style={{
+            backgroundColor: '#374151',
+            borderRadius: '8px',
+            padding: '12px',
+            maxHeight: '200px',
+            overflowY: 'auto'
+          }}>
+            {transcript.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  backgroundColor: '#4b5563',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px auto'
+                }}>
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
+                <p style={{ color: '#9ca3af', fontSize: '14px', margin: '0' }}>
+                  No transcript yet...
+                </p>
+                <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '4px', margin: '4px 0 0 0' }}>
+                  Start speaking to see live transcription
+                </p>
               </div>
+            ) : (
+              transcript.slice(-10).map((msg) => (
+                <div key={msg.id} style={{
+                  padding: '8px',
+                  marginBottom: '8px',
+                  backgroundColor: '#4b5563',
+                  borderRadius: '6px',
+                  fontSize: '13px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: '600', color: '#60a5fa' }}>
+                      Speaker {msg.speaker || 'Unknown'}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p style={{ margin: '0', color: '#e5e7eb' }}>{msg.text}</p>
+                </div>
+              ))
             )}
           </div>
+        </div>
+        
+        {/* Chat with Hero */}
+        <div className="sidebar-section">
+          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
+            Chat with Hero AI
+          </h3>
+          
+          <div style={{
+            backgroundColor: '#374151',
+            borderRadius: '8px',
+            padding: '12px',
+            maxHeight: '250px',
+            overflowY: 'auto',
+            marginBottom: '12px'
+          }}>
+            {messages.filter(m => !m.isTranscript).length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '20px' }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  backgroundColor: '#2563eb',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 12px auto'
+                }}>
+                  🤖
+                </div>
+                <p style={{ color: '#9ca3af', fontSize: '14px', margin: '0' }}>
+                  Say "Hey Hero" or type a message
+                </p>
+                <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '4px', margin: '4px 0 0 0' }}>
+                  Hero understands the meeting context
+                </p>
+              </div>
+            ) : (
+              messages.filter(m => !m.isTranscript).map((message) => (
+                <div key={message.id} style={{
+                  backgroundColor: message.isHero ? '#1e40af' : '#4b5563',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  marginBottom: '8px',
+                  fontSize: '13px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '4px'
+                  }}>
+                    <span style={{ fontWeight: '600', fontSize: '12px', color: message.isHero ? '#60a5fa' : '#e5e7eb' }}>
+                      {message.isHero ? '🤖 Hero AI' : 'You'}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#9ca3af' }}>
+                      {new Date(message.timestamp).toLocaleTimeString([], { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </span>
+                  </div>
+                  <p style={{ margin: '0', color: 'white' }}>{message.text}</p>
+                </div>
+              ))
+            )}
+          </div>
+          
+          {/* Chat Input */}
+          <form onSubmit={(e) => { e.preventDefault(); const input = e.target as any; if (input.chat.value.trim()) { handleSendMessage(input.chat.value.trim()); input.chat.value = ''; } }}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                name="chat"
+                type="text" 
+                placeholder="Type a message for Hero..."
+                style={{
+                  flex: '1',
+                  padding: '8px 12px',
+                  borderRadius: '6px',
+                  border: '1px solid #4b5563',
+                  backgroundColor: '#374151',
+                  color: 'white',
+                  fontSize: '14px'
+                }}
+              />
+              <button 
+                type="submit"
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+              >
+                Send
+              </button>
+            </div>
+          </form>
         </div>
       </div>
 
