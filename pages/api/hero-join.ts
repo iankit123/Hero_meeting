@@ -48,8 +48,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const llmService = createLLMService();
       const ttsService = createTTSService();
 
-      // Check for "hey hero" trigger phrase
-      const triggerPhrase = /hey\s+hero/i;
+      // Check for Hero trigger phrases (hey hero, hi hero, etc.)
+      const triggerPhrase = /(hey|hi|hello)\s+hero/i;
       if (!triggerPhrase.test(message)) {
         return res.status(200).json({
           success: true,
@@ -59,15 +59,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Extract the question after the trigger phrase
       const question = message.replace(triggerPhrase, '').trim();
-      if (!question) {
-        return res.status(200).json({
-          success: true,
-          message: 'No question detected after trigger phrase',
-        });
-      }
+      
+      // If no specific question, provide a default greeting response
+      const finalQuestion = question || 'Hello! How can I help you today?';
+      
+      console.log('Hero trigger detected:', { message, question: finalQuestion });
 
       // Generate LLM response
-      const llmResponse = await llmService.generateResponse(question, context);
+      const llmResponse = await llmService.generateResponse(finalQuestion, context);
       
       // Generate TTS audio
       const ttsResult = await ttsService.synthesize(llmResponse.text);

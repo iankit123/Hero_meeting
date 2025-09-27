@@ -220,9 +220,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             isTranscript: true
           });
 
-          // Check for "Hey Hero" trigger (case insensitive)
-          if (finalTranscript.toLowerCase().includes('hey hero')) {
-            console.log('Hey Hero detected:', finalTranscript);
+          // Check for Hero trigger phrases (case insensitive)
+          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero/)) {
+            console.log('Hero trigger detected:', finalTranscript);
             handleHeroTrigger(finalTranscript);
           }
         }
@@ -286,6 +286,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       });
       
       const data = await response.json();
+      console.log('Hero API response:', data);
+      
       if (data.success && data.response) {
         addMessage({
           id: Date.now().toString(),
@@ -308,6 +310,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             console.warn('Error playing TTS audio:', audioError);
           }
         }
+      } else if (data.success && data.message) {
+        // Show debug message in transcript
+        addTranscript({
+          id: Date.now().toString(),
+          text: `🤖 Hero debug: ${data.message}`,
+          speaker: 'system',
+          timestamp: Date.now(),
+          isTranscript: true
+        });
       }
     } catch (error) {
       console.error('Error handling Hero trigger:', error);
@@ -339,6 +350,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       });
 
       const data = await response.json();
+      console.log('Hero chat response:', data);
+      
       if (data.success && data.response) {
         // Add Hero AI response to chat
         addMessage({
@@ -362,6 +375,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             console.warn('Error playing TTS audio:', audioError);
           }
         }
+      } else if (data.success && data.message) {
+        // Show debug message for chat
+        addMessage({
+          id: Date.now().toString(),
+          text: `Debug: ${data.message}`,
+          timestamp: Date.now(),
+          isHero: true
+        });
       }
     } catch (error) {
       console.error('Error sending message to Hero bot:', error);
