@@ -247,21 +247,26 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             timestamp: Date.now(),
             isTranscript: true
           });
+        } else if (event.error === 'aborted') {
+          // Don't restart immediately on abort - let the onend handler do it
+          console.log('Speech recognition aborted, will restart via onend');
         }
       };
 
       recognition.onend = () => {
         console.log('Speech recognition ended');
         isListening = false;
-        // Restart recognition to keep listening
+        // Only restart if room is connected and not manually stopped
         if (room && room.state === 'connected') {
           setTimeout(() => {
             try {
-              recognition.start();
+              if (!isListening) {
+                recognition.start();
+              }
             } catch (error) {
-              console.log('Recognition restart skipped - already running');
+              console.log('Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
             }
-          }, 1000);
+          }, 500); // Reduced timeout to 500ms
         }
       };
 
@@ -298,9 +303,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('Hero API response:', data);
       
       if (data.success && data.response) {
+        // Strip markdown formatting from response
+        const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+        
         addMessage({
           id: Date.now().toString(),
-          text: data.response,
+          text: cleanResponse,
           timestamp: Date.now(),
           isHero: true
         });
@@ -362,10 +370,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('Hero chat response:', data);
       
       if (data.success && data.response) {
+        // Strip markdown formatting from response
+        const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+        
         // Add Hero AI response to chat
         addMessage({
           id: Date.now().toString(),
-          text: data.response,
+          text: cleanResponse,
           timestamp: Date.now(),
           isHero: true
         });
