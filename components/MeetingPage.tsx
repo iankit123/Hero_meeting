@@ -163,23 +163,111 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   
   const startTranscription = async (room: Room) => {
     try {
-      // TODO: Implement server-side transcription proxy for security
-      // For now, add demo transcript to show the UI works
-      console.log('Transcription will be implemented server-side for security');
+      // Check if browser supports speech recognition
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
-      // Add a demo transcript to show the UI works
-      setTimeout(() => {
+      if (!SpeechRecognition) {
+        console.warn('Speech recognition not supported in this browser');
         addTranscript({
           id: Date.now().toString(),
-          text: 'Welcome to Hero Meet! This is a demo transcript. Say "Hey Hero" to test the AI assistant.',
-          speaker: '0',
+          text: 'Speech recognition not supported in this browser. Try using Chrome or Edge.',
+          speaker: 'system',
           timestamp: Date.now(),
           isTranscript: true
         });
-      }, 3000);
+        return;
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      let isListening = false;
+
+      recognition.onstart = () => {
+        console.log('Speech recognition started');
+        isListening = true;
+        addTranscript({
+          id: Date.now().toString(),
+          text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
+          speaker: 'system',
+          timestamp: Date.now(),
+          isTranscript: true
+        });
+      };
+
+      recognition.onresult = (event: any) => {
+        let finalTranscript = '';
+        let interimTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // Show final transcript
+        if (finalTranscript.trim()) {
+          addTranscript({
+            id: Date.now().toString(),
+            text: finalTranscript.trim(),
+            speaker: 'user',
+            timestamp: Date.now(),
+            isTranscript: true
+          });
+
+          // Check for "Hey Hero" trigger (case insensitive)
+          if (finalTranscript.toLowerCase().includes('hey hero')) {
+            console.log('Hey Hero detected:', finalTranscript);
+            handleHeroTrigger(finalTranscript);
+          }
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error === 'not-allowed') {
+          addTranscript({
+            id: Date.now().toString(),
+            text: '❌ Microphone access denied. Please allow microphone access to use voice commands.',
+            speaker: 'system',
+            timestamp: Date.now(),
+            isTranscript: true
+          });
+        }
+      };
+
+      recognition.onend = () => {
+        console.log('Speech recognition ended');
+        isListening = false;
+        // Restart recognition to keep listening
+        if (room && room.state === 'connected') {
+          setTimeout(() => {
+            try {
+              recognition.start();
+            } catch (error) {
+              console.log('Recognition restart skipped - already running');
+            }
+          }, 1000);
+        }
+      };
+
+      // Start recognition
+      recognition.start();
       
     } catch (error) {
       console.error('Error starting transcription:', error);
+      addTranscript({
+        id: Date.now().toString(),
+        text: '❌ Failed to start speech recognition. Please refresh the page and try again.',
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
     }
   };
   
