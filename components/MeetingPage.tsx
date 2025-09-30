@@ -24,6 +24,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const videoRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     initializeRoom();
@@ -33,6 +34,35 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
     };
   }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initialize audio context on first user interaction
+  useEffect(() => {
+    const initializeAudio = async () => {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+        console.log('🎵 [AUDIO] Audio context initialized');
+      }
+    };
+
+    const handleUserInteraction = () => {
+      initializeAudio();
+      // Remove event listeners after first interaction
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+    };
+
+    // Add event listeners for user interaction
+    document.addEventListener('click', handleUserInteraction);
+    document.addEventListener('keydown', handleUserInteraction);
+    document.addEventListener('touchstart', handleUserInteraction);
+
+    return () => {
+      document.removeEventListener('click', handleUserInteraction);
+      document.removeEventListener('keydown', handleUserInteraction);
+      document.removeEventListener('touchstart', handleUserInteraction);
+    };
+  }, []);
 
   const initializeRoom = async () => {
     try {
@@ -138,6 +168,26 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     // Also add to general messages for context
     addMessage({ ...message, isTranscript: true });
   };
+
+  // Store speech in context via API
+  const storeSpeechInContext = async (speechText: string) => {
+    try {
+      await fetch('/api/store-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomName,
+          speech: speechText,
+          speaker: 'user'
+        }),
+      });
+      console.log('📝 [CONTEXT] Stored speech in context:', speechText.substring(0, 50) + '...');
+    } catch (error) {
+      console.warn('⚠️ [CONTEXT] Failed to store speech in context:', error);
+    }
+  };
   
   const enableLocalMedia = async (room: Room) => {
     try {
@@ -221,6 +271,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             timestamp: Date.now(),
             isTranscript: true
           });
+
+          // Store all speech in context (not just Hero-triggered messages)
+          storeSpeechInContext(finalTranscript.trim());
 
           // Check for Hero trigger phrases (case insensitive) - check both current and recent context
           const recentContext = transcript.slice(-3).map(t => t.text).join(' ').toLowerCase();
@@ -307,8 +360,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         },
         body: JSON.stringify({
           roomName,
-          message: transcript,
-          context: messages.slice(-5).map(m => m.text).join(' ') + ' ' + transcript
+          message: transcript
         }),
       });
       
@@ -337,23 +389,44 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
           
           try {
-            const audioContext = new AudioContext();
-            console.log('🎵 [FRONTEND] Creating audio context...');
+            // Initialize audio context if not already done
+            if (!audioContextRef.current) {
+              audioContextRef.current = new AudioContext();
+              console.log('🎵 [FRONTEND] Creating audio context...');
+            }
+            
+            // Resume audio context if suspended (required for user interaction)
+            if (audioContextRef.current.state === 'suspended') {
+              await audioContextRef.current.resume();
+              console.log('🎵 [FRONTEND] Audio context resumed');
+            }
             
             const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
             console.log('🎵 [FRONTEND] Decoded audio data size:', audioData.length, 'bytes');
             
-            const audioBuffer = await audioContext.decodeAudioData(audioData.buffer);
+            const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
             console.log('🎵 [FRONTEND] Audio buffer created successfully');
             
-            const source = audioContext.createBufferSource();
+            const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
+            source.connect(audioContextRef.current.destination);
             source.start();
             
             console.log('✅ [FRONTEND] Audio playback started!');
           } catch (audioError) {
             console.warn('❌ [FRONTEND] Error playing TTS audio:', audioError);
+            // Fallback: try using HTML5 audio element
+            try {
+              const audioBlob = new Blob([Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const audio = new Audio(audioUrl);
+              await audio.play();
+              console.log('✅ [FRONTEND] Fallback audio playback started!');
+              // Clean up the URL after playback
+              audio.onended = () => URL.revokeObjectURL(audioUrl);
+            } catch (fallbackError) {
+              console.warn('❌ [FRONTEND] Fallback audio playback also failed:', fallbackError);
+            }
           }
         } else {
           console.log('⚠️ [FRONTEND] No audio buffer provided in response');
@@ -397,8 +470,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         },
         body: JSON.stringify({
           roomName,
-          message,
-          context: messages.slice(-5).map(m => m.text).join(' '), // Last 5 messages as context
+          message
         }),
       });
 
@@ -420,15 +492,35 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         // Play TTS audio if available
         if (data.audioBuffer) {
           try {
-            const audioContext = new AudioContext();
+            // Initialize audio context if not already done
+            if (!audioContextRef.current) {
+              audioContextRef.current = new AudioContext();
+            }
+            
+            // Resume audio context if suspended (required for user interaction)
+            if (audioContextRef.current.state === 'suspended') {
+              await audioContextRef.current.resume();
+            }
+            
             const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
-            const audioBuffer = await audioContext.decodeAudioData(audioData.buffer);
-            const source = audioContext.createBufferSource();
+            const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+            const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContext.destination);
+            source.connect(audioContextRef.current.destination);
             source.start();
           } catch (audioError) {
             console.warn('Error playing TTS audio:', audioError);
+            // Fallback: try using HTML5 audio element
+            try {
+              const audioBlob = new Blob([Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+              const audioUrl = URL.createObjectURL(audioBlob);
+              const audio = new Audio(audioUrl);
+              await audio.play();
+              // Clean up the URL after playback
+              audio.onended = () => URL.revokeObjectURL(audioUrl);
+            } catch (fallbackError) {
+              console.warn('Fallback audio playback also failed:', fallbackError);
+            }
           }
         }
       } else if (data.success && data.message) {

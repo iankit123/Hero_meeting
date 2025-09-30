@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { AccessToken } from 'livekit-server-sdk';
 import { createLLMService } from '../../services/llm';
 import { createTTSService } from '../../services/tts';
+import { contextService } from '../../services/context';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -48,6 +49,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📥 [API] Received message:', message);
       console.log('📝 [API] Context provided:', context?.substring(0, 100) + '...');
       
+      // Store the user message in context
+      contextService.addEntry(roomName, 'user', message);
+      
       // Process user message and generate Hero response
       const llmService = createLLMService();
       const ttsService = createTTSService();
@@ -73,11 +77,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const finalQuestion = question || 'Hello! How can I help you today?';
       
       console.log('❓ [API] Extracted question:', finalQuestion);
+      
+      // Get conversation context from storage
+      const conversationContext = contextService.getContext(roomName, 15);
+      const contextSummary = contextService.getConversationSummary(roomName);
+      
+      console.log('📚 [CONTEXT] Retrieved conversation history:');
+      console.log('📚 [CONTEXT] Summary:', contextSummary);
+      console.log('📚 [CONTEXT] Recent messages:', conversationContext.substring(0, 200) + '...');
+      
+      // Create enhanced context for the LLM
+      const enhancedContext = conversationContext ? 
+        `Meeting Context:\n${contextSummary}\n\nRecent Conversation:\n${conversationContext}\n\nCurrent Question: ${finalQuestion}` :
+        `Current Question: ${finalQuestion}`;
+      
       console.log('\n🧠 [GEMINI] === SENDING TO LLM ===');
-      console.log('📤 [GEMINI] Sending to Gemini AI:', finalQuestion);
+      console.log('📤 [GEMINI] Sending to Gemini AI with context:', finalQuestion);
 
       // Generate LLM response
-      const llmResponse = await llmService.generateResponse(finalQuestion, context);
+      const llmResponse = await llmService.generateResponse(finalQuestion, enhancedContext);
       
       console.log('📥 [GEMINI] Received response from Gemini:');
       console.log('📥 [GEMINI] Response length:', llmResponse.text?.length || 0, 'characters');
@@ -92,6 +110,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📥 [ELEVENLABS] Received audio from TTS:');
       console.log('📥 [ELEVENLABS] Audio buffer size:', ttsResult.audioBuffer?.length || 0, 'bytes');
       console.log('📥 [ELEVENLABS] Audio duration:', ttsResult.duration, 'seconds');
+      
+      // Store the Hero response in context
+      contextService.addEntry(roomName, 'hero', llmResponse.text);
       
       console.log('\n✅ [API] === HERO PIPELINE COMPLETE ===\n');
 
@@ -115,9 +136,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // If it's an AI service error, provide a fallback response
     if (error instanceof Error && (error.message.includes('Service Unavailable') || error.message.includes('429') || error.message.includes('quota'))) {
       console.log('⚠️ [API] AI service temporarily unavailable - sending fallback response');
+      const fallbackResponse = "I'm Hero, your AI meeting assistant! I'm having trouble connecting to my AI brain right now due to high usage, but I can hear you clearly. Please try again in a moment when the AI service is available again.";
+      
+      // Store the fallback response in context too
+      if (req.body.roomName) {
+        contextService.addEntry(req.body.roomName, 'hero', fallbackResponse);
+      }
+      
       res.status(200).json({
         success: true,
-        response: "I'm Hero, your AI meeting assistant! I'm having trouble connecting to my AI brain right now due to high usage, but I can hear you clearly. Please try again in a moment when the AI service is available again.",
+        response: fallbackResponse,
       });
     } else {
       console.error('💥 [API] Unexpected error - sending error response');
