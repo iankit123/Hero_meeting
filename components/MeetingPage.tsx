@@ -232,6 +232,17 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
+      
+      // Improve speech recognition sensitivity
+      recognition.maxAlternatives = 3; // Get multiple recognition alternatives
+      recognition.serviceURI = ''; // Use default service
+      
+      // Set longer timeout for better detection
+      if ('webkitSpeechRecognition' in window) {
+        (recognition as any).continuous = true;
+        (recognition as any).interimResults = true;
+        (recognition as any).maxAlternatives = 3;
+      }
 
       let isListening = false;
 
@@ -332,7 +343,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             } catch (error) {
               console.warn('⚠️ [SPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
             }
-          }, 1000); // Increased timeout to 1000ms for stability
+          }, 500); // Reduced timeout for more responsive listening
         }
       };
 

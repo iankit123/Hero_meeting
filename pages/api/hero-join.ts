@@ -54,7 +54,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       // Process user message and generate Hero response
       const llmService = createLLMService();
-      const ttsService = createTTSService();
+      
+      // Use GTTS for testing (free) or ElevenLabs for production
+      const ttsProvider = process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
+      const ttsService = createTTSService(ttsProvider);
+      
+      console.log(`🎵 [TTS] Using provider: ${ttsProvider}`);
 
       // Check for Hero trigger phrases (hey hero, hi hero, etc.)
       const triggerPhrase = /(hey|hi|hello)\s+hero/i;
@@ -101,17 +106,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📥 [GEMINI] Response length:', llmResponse.text?.length || 0, 'characters');
       console.log('📥 [GEMINI] Response preview:', llmResponse.text?.substring(0, 100) + '...');
       
+      // Clean the response text for TTS (remove markdown formatting)
+      const cleanTextForTTS = llmResponse.text
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
+        .replace(/\*(.*?)\*/g, '$1') // Remove italic markdown
+        .replace(/#{1,6}\s*/g, '') // Remove headers
+        .replace(/`(.*?)`/g, '$1') // Remove code backticks
+        .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links, keep text
+        .replace(/\n{2,}/g, '. ') // Replace multiple newlines with periods
+        .replace(/\n/g, ' ') // Replace single newlines with spaces
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
+
       console.log('\n🎵 [ELEVENLABS] === SENDING TO TTS ===');
-      console.log('📤 [ELEVENLABS] Sending text to TTS:', llmResponse.text?.substring(0, 50) + '...');
-      
+      console.log('🧹 [TTS] Original text:', llmResponse.text.substring(0, 100) + '...');
+      console.log('🧹 [TTS] Cleaned text:', cleanTextForTTS.substring(0, 100) + '...');
+      console.log('📤 [ELEVENLABS] Sending text to TTS:', cleanTextForTTS?.substring(0, 50) + '...');
+
       // Generate TTS audio
-      const ttsResult = await ttsService.synthesize(llmResponse.text);
+      const ttsResult = await ttsService.synthesize(cleanTextForTTS);
       
       console.log('📥 [ELEVENLABS] Received audio from TTS:');
       console.log('📥 [ELEVENLABS] Audio buffer size:', ttsResult.audioBuffer?.length || 0, 'bytes');
       console.log('📥 [ELEVENLABS] Audio duration:', ttsResult.duration, 'seconds');
       
-      // Store the Hero response in context
+      // Store the Hero response in context (use original text for context, cleaned text for TTS)
       contextService.addEntry(roomName, 'hero', llmResponse.text);
       
       console.log('\n✅ [API] === HERO PIPELINE COMPLETE ===\n');
