@@ -9,6 +9,7 @@ export interface TTSResult {
 
 export type TTSProvider = 'elevenlabs' | 'gtts';
 
+// -------------------- ELEVEN LABS --------------------
 export class ElevenLabsTTSService implements TTSService {
   private apiKey: string;
 
@@ -19,7 +20,11 @@ export class ElevenLabsTTSService implements TTSService {
     }
   }
 
-  async synthesize(text: string, voiceId: string = 'pNInz6obpgDQGcFmaJgB', speed?: number): Promise<TTSResult> {
+  async synthesize(
+    text: string,
+    voiceId: string = 'pNInz6obpgDQGcFmaJgB',
+    speed?: number
+  ): Promise<TTSResult> {
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
     
     const requestBody = {
@@ -48,8 +53,8 @@ export class ElevenLabsTTSService implements TTSService {
 
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     
-    // Estimate duration (rough calculation)
-    const duration = text.length * 0.06; // ~60ms per character
+    // Estimate duration (~60ms per character)
+    const duration = text.length * 0.06;
 
     return {
       audioBuffer,
@@ -58,74 +63,65 @@ export class ElevenLabsTTSService implements TTSService {
   }
 }
 
+// -------------------- GOOGLE TTS (GTTS) --------------------
 export class GTTSService implements TTSService {
-  private baseUrl = 'https://translate.google.com/translate_tts';
   private baseUrl = 'https://translate.google.com/translate_tts';
 
   async synthesize(text: string, voiceId?: string, speed: number = 1.5): Promise<TTSResult> {
-    try {
-      // Ultra-aggressive text cleaning for GTTS to avoid 400 errors
-      const cleanText = text
-        .replace(/[\"\"'']/g, '\"') // Normalize quotes
-        .replace(/[^\w\s.]/g, ' ') // Only keep words, spaces, and periods
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .replace(/['']/g, "'") // Normalize apostrophes
-        .replace(/(\w)-(\w)/g, '$1 $2') // Replace hyphens with spaces
-        .trim();
+    const cleanText = text.replace(/\s+/g, ' ').trim();
 
-      if (!cleanText || cleanText.length < 2) {
-        throw new Error('No valid text to synthesize');
-      }
-
-      console.log(`🎵 [GTTS] Processing text: "${cleanText.replace(/\s+/g, ' ')}"`);
-
-      // Validate text length for GTTS (they have limits)
-      if (cleanText.length > 200) {
-        const truncatedText = cleanText.substring(0, 200).replace(/\s+\S*$/, '');
-        console.log(`🎵 [GTTS] Text too long, truncating to: "${truncatedText}"`);
-        return this.synthesizeText(truncatedText);
-      }
-
-      return this.synthesizeText(cleanText);
-    } catch (error) {
-      console.error('Error synthesizing speech with GTTS:', error);
-      
-      // If the first attempt fails, try with even simpler text
-      try {
-        const ultraSimpleText = text
-          .replace(/[^\w\s]/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .substring(0, 50); // Very short fallback
-        
-        if (ultraSimpleText.trim().length > 2) {
-          console.log(`🔄 [GTTS] Trying with ultra-simple text: "${ultraSimpleText}"`);
-          return this.synthesizeText(ultraSimpleText);
-        }
-      } catch (fallbackError) {
-        console.error('GTTS fallback also failed:', fallbackError);
-      }
-      
-      throw new Error(`GTTS synthesis failed: ${error}`);
+    if (!cleanText || cleanText.length < 2) {
+      throw new Error('No valid text to synthesize');
     }
+
+    // Split into 200-char safe chunks (GTTS limit is ~200–250 chars)
+    const chunks = this.splitIntoChunks(cleanText, 200);
+
+    const buffers: Buffer[] = [];
+    let totalDuration = 0;
+
+    for (const chunk of chunks) {
+      const result = await this.synthesizeText(chunk, speed);
+      buffers.push(result.audioBuffer);
+      totalDuration += result.duration;
+    }
+
+    return {
+      audioBuffer: Buffer.concat(buffers),
+      duration: totalDuration,
+    };
   }
 
-  private async synthesizeText(cleanText: string): Promise<TTSResult> {
-    // GTTS parameters optimized for reliability
+  private splitIntoChunks(text: string, maxLength: number): string[] {
+    const words = text.split(' ');
+    const chunks: string[] = [];
+    let current = '';
+
+    for (const word of words) {
+      if ((current + ' ' + word).trim().length > maxLength) {
+        chunks.push(current.trim());
+        current = word;
+      } else {
+        current += ' ' + word;
+      }
+    }
+    if (current) chunks.push(current.trim());
+    return chunks;
+  }
+
+  private async synthesizeText(cleanText: string, speed: number = 1.5): Promise<TTSResult> {
     const params = new URLSearchParams({
       ie: 'UTF-8',
       q: cleanText,
-      tl: 'en-us', // US English for better stability
+      tl: 'en-us',
       client: 'tw-ob',
       textlen: cleanText.length.toString()
     });
 
-    console.log(`🎵 [GTTS] Making request with params:', ${params.toString()}`);
-
     const response = await fetch(`${this.baseUrl}?${params}`, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0',
         'Accept': 'audio/wav,audio/mpeg,audio/*',
         'Referer': 'https://translate.google.com/',
         'Accept-Language': 'en-US,en;q=0.9'
@@ -133,18 +129,13 @@ export class GTTSService implements TTSService {
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'No response body');
-      console.error(`❌ [GTTS] API Error ${response.status}: ${response.statusText}`);
-      console.error(`❌ [GTTS] Error response: ${errorText}`);
       throw new Error(`GTTS API error: ${response.status} ${response.statusText}`);
     }
 
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     
-    // Estimate duration (rough calculation for GTTS with 1.5x speed)
-    const duration = cleanText.length * 0.04; // ~40ms per character (1.5x speed: 60ms/1.5 = 40ms)
-
-    console.log(`🎵 [GTTS] Generated audio: ${audioBuffer.length} bytes, ${duration.toFixed(2)}s duration`);
+    // Estimate duration (1.5x speed = ~40ms per char)
+    const duration = cleanText.length * 0.04;
 
     return {
       audioBuffer,
@@ -153,7 +144,7 @@ export class GTTSService implements TTSService {
   }
 }
 
-// Factory function to create TTS service (easily swappable)
+// -------------------- FACTORY --------------------
 export function createTTSService(provider: TTSProvider = 'elevenlabs'): TTSService {
   switch (provider) {
     case 'gtts':
