@@ -123,8 +123,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('🧹 [TTS] Cleaned text:', cleanTextForTTS.substring(0, 100) + '...');
       console.log('📤 [ELEVENLABS] Sending text to TTS:', cleanTextForTTS?.substring(0, 50) + '...');
 
-      // Generate TTS audio
-      const ttsResult = await ttsService.synthesize(cleanTextForTTS);
+      // Generate TTS audio with fallback
+      let ttsResult;
+      try {
+        ttsResult = await ttsService.synthesize(cleanTextForTTS);
+        console.log('✅ [TTS] Successfully generated audio');
+      } catch (ttsError) {
+        console.error('❌ [TTS] Initial TTS failed:', ttsError);
+        
+        // Try with simpler text as fallback
+        const fallbackText = llmResponse.text
+          .replace(/[^\w\s.]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .substring(0, 100);
+        
+        console.log(`🔄 [TTS] Trying fallback text: "${fallbackText}"`);
+        ttsResult = await ttsService.synthesize(fallbackText);
+        console.log('✅ [TTS] Fallback audio generated successfully');
+      }
       
       console.log('📥 [ELEVENLABS] Received audio from TTS:');
       console.log('📥 [ELEVENLABS] Audio buffer size:', ttsResult.audioBuffer?.length || 0, 'bytes');

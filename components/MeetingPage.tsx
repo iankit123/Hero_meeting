@@ -363,7 +363,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
   
   const handleHeroTrigger = async (transcript: string) => {
+    console.log('\n🚀 [FRONTEND] === SENDING TO HERO ===');
+    console.log('🚀 [FRONTEND] Room:', roomName);
+    console.log('🚀 [FRONTEND] Message:', transcript);
+    
     try {
+      console.log('🌐 [FRONTEND] Making API call to /api/hero-join...');
+      
       const response = await fetch('/api/hero-join', {
         method: 'POST',
         headers: {
@@ -374,6 +380,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           message: transcript
         }),
       });
+      
+      console.log('📡 [FRONTEND] API response status:', response.status);
+      console.log('📡 [FRONTEND] API response ok:', response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ [FRONTEND] API Error Response:', errorText);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
+      }
       
       const data = await response.json();
       console.log('\n📥 [FRONTEND] === HERO RESPONSE RECEIVED ===');
@@ -458,7 +473,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       
       console.log('🏁 [FRONTEND] === HERO PIPELINE COMPLETE ===\n');
     } catch (error) {
-      console.error('Error handling Hero trigger:', error);
+      console.error('\n❌ [FRONTEND] === HERO TRIGGER ERROR ===');
+      console.error('❌ [FRONTEND] Error type:', typeof error);
+      console.error('❌ [FRONTEND] Error message:', error instanceof Error ? error.message : String(error));
+      console.error('❌ [FRONTEND] Full error:', error);
+      console.error('🏁 [FRONTEND] === ERROR END ===\n');
+      
+      // Add error message to chat
+      addMessage({
+        id: Date.now().toString(),
+        text: `❌ Sorry, Hero encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        timestamp: Date.now(),
+        isHero: true
+      });
     }
   };
 
