@@ -67,8 +67,25 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const initializeRoom = async () => {
     try {
       setIsLoading(true);
+      console.log('🚀 [INIT] Starting room initialization...');
       
-      // Get join token from backend
+      // STEP 1: Ensure browser permissions FIRST
+      console.log('📱 [PERMISSIONS] Requesting media permissions...');
+      try {
+        const permissions = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        console.log('✅ [PERMISSIONS] Media permissions granted');
+        // Stop the stream immediately - we just needed permission
+        permissions.getTracks().forEach(track => track.stop());
+      } catch (permError) {
+        console.error('❌ [PERMISSIONS] Media permissions denied:', permError);
+        throw new Error('Camera and microphone permissions are required');
+      }
+      
+      // STEP 2: Get join token from backend
+      console.log('🎫 [TOKEN] Getting LiveKit token...');
       const response = await fetch('/api/create-room', {
         method: 'POST',
         headers: {
@@ -82,129 +99,223 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
 
       const { token } = await response.json();
+      console.log('✅ [TOKEN] LiveKit token received');
 
-      // Create LiveKit room
+      // STEP 3: Create LiveKit room with aggressive settings
+      console.log('📺 [ROOM] Creating LiveKit room...');
       const newRoom = new Room({
         adaptiveStream: true,
         dynacast: true,
-      });
-
-      // Set up event listeners
-      newRoom.on(RoomEvent.Connected, () => {
-        console.log('Connected to room');
-        setIsConnected(true);
-        setIsLoading(false);
-      });
-
-      newRoom.on(RoomEvent.Disconnected, () => {
-        console.log('Disconnected from room');
-        setIsConnected(false);
-      });
-
-      newRoom.on(RoomEvent.ParticipantConnected, async (participant: RemoteParticipant) => {
-        console.log('Participant connected:', participant.identity);
-        setParticipants(prev => [...prev, participant]);
-        
-        // Ensure our local media is published for the new participant
-        if (newRoom.localParticipant) {
-          console.log('📱 New participant joined - ensuring media availability');
-          
-          // Force enable camera and microphone to ensure tracks are published
-          try {
-            console.log('🎥 Enabling camera...');
-            await newRoom.localParticipant.setCameraEnabled(true);
-            setIsVideoEnabled(true);
-            
-            console.log('🎤 Enabling microphone...');
-            await newRoom.localParticipant.setMicrophoneEnabled(true);
-            setIsAudioEnabled(true);
-            
-            // Give it a moment for the tracks to be ready
-            setTimeout(async () => {
-              // Double-check that tracks are published and create if needed
-              const videoTracks = Array.from(newRoom.localParticipant.videoTrackPublications.values());
-              const audioTracks = Array.from(newRoom.localParticipant.audioTrackPublications.values());
-              
-              console.log(`📊 Track status - Video: ${videoTracks.length}, Audio: ${audioTracks.length}`);
-              
-              // If no tracks are published, create them
-              if (videoTracks.length === 0) {
-                console.log('🔧 Creating missing video track...');
-                const videoTrack = await createLocalVideoTrack();
-                await newRoom.localParticipant.publishTrack(videoTrack);
-                setLocalVideoTrack(videoTrack);
-                
-                if (localVideoRef.current) {
-                  videoTrack.attach(localVideoRef.current);
-                }
-              }
-              
-              if (audioTracks.length === 0) {
-                console.log('🔧 Creating missing audio track...');
-                const audioTrack = await createLocalAudioTrack();
-                await newRoom.localParticipant.publishTrack(audioTrack);
-                setLocalAudioTrack(audioTrack);
-              }
-            }, 1000);
-            
-          } catch (error) {
-            console.error('❌ Error ensuring media availability:', error);
-          }
-        }
-        
-        // Add welcome message for Hero bot
-        if (participant.identity === 'hero-bot') {
-          addMessage({
-            id: Date.now().toString(),
-            text: 'Hero AI assistant has joined the meeting! Say &quot;Hey Hero&quot; to ask questions.',
-            isHero: true,
-            timestamp: Date.now(),
-          });
+        // Add more robust connection settings
+        reconnectPolicy: {
+          nextRetryDelayInMs: () => 5000,
+        },
+        // Force simulcast for better compatibility
+        publishDefaults: {
+          simulcast: false, // Disable simulcast for simpler negotiation
         }
       });
 
-      newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
-        console.log('Participant disconnected:', participant.identity);
-        setParticipants(prev => prev.filter(p => p.identity !== participant.identity));
-      });
+      // STEP 4: Set up comprehensive event listeners with detailed logging
+      setupRoomEventListeners(newRoom);
 
-      newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: any, participant: RemoteParticipant) => {
-        console.log('Track subscribed:', track.kind, participant.identity);
+      // STEP 5: PRE-CREATE tracks before connection
+      console.log('🎥 [TRACKS] Pre-creating media tracks...');
+      let localVideo, localAudio;
+      
+      try {
+        localVideo = await createLocalVideoTrack({
+          // Conservative video settings for compatibility
+          resolution: {
+            width: 640,
+            height: 480
+          },
+          frameRate: 15 // Lower framerate for better reliability
+        });
         
-        if (track.kind === Track.Kind.Video) {
-          const videoElement = track.attach();
-          if (videoRef.current) {
-            videoRef.current.appendChild(videoElement);
-          }
-        } else if (track.kind === Track.Kind.Audio) {
-          const audioElement = track.attach();
-          if (audioRef.current) {
-            audioRef.current.srcObject = audioElement.srcObject;
-            audioRef.current.play();
-          }
+        localAudio = await createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        });
+        
+        setLocalVideoTrack(localVideo);
+        setLocalAudioTrack(localAudio);
+        
+        // Attach video to preview immediately
+        if (localVideoRef.current) {
+          localVideo.attach(localVideoRef.current);
+          console.log('✅ [TRACKS] Video track attached to preview');
         }
-      });
+        
+        console.log('✅ [TRACKS] Media tracks pre-created successfully');
+      } catch (trackError) {
+        console.error('❌ [TRACKS] Failed to create media tracks:', trackError);
+        throw new Error('Failed to access camera or microphone');
+      }
 
-      newRoom.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
-        track.detach();
-      });
-
-      // Connect to room
+      // STEP 6: Connect to room
+      console.log('🔌 [CONNECT] Connecting to LiveKit room...');
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
+      console.log('✅ [CONNECT] Connected to LiveKit room');
       setRoom(newRoom);
+      setIsConnected(true);
       
-      // Enable user's camera and microphone
-      await enableLocalMedia(newRoom);
+      // STEP 7: Publish tracks immediately after connection
+      console.log('📤 [PUBLISH] Publishing pre-created tracks...');
+      try {
+        await newRoom.localParticipant.publishTrack(localVideo);
+        console.log('✅ [PUBLISH] Video track published');
+        
+        await newRoom.localParticipant.publishTrack(localAudio);
+        console.log('✅ [PUBLISH] Audio track published');
+        
+        // Update UI state
+        setIsVideoEnabled(true);
+        setIsAudioEnabled(true);
+      } catch (publishError) {
+        console.error('❌ [PUBLISH] Failed to publish tracks:', publishError);
+      }
       
-      // Start transcription
+      // STEP 8: Start background services
+      console.log('🎙️ [SERVICES] Starting transcription service...');
       startTranscription(newRoom);
+      
+      console.log('✅ [INIT] Room initialization completed successfully');
+      setIsLoading(false);
 
     } catch (error) {
-      console.error('Error initializing room:', error);
+      console.error('❌ [INIT] Room initialization failed:', error);
       setError(error instanceof Error ? error.message : 'Failed to join meeting');
       setIsLoading(false);
     }
   };
+
+  const setupRoomEventListeners = (newRoom: Room) => {
+    console.log('🎧 [EVENTS] Setting up room event listeners...');
+    
+    newRoom.on(RoomEvent.Connected, () => {
+      console.log('✅ [CONNECT] Connected to room:', newRoom.name);
+      console.log('👀 [CONNECT] Local participant:', newRoom.localParticipant.identity);
+      console.log('📺 [CONNECT] Room details:', newRoom.name);
+    });
+
+    newRoom.on(RoomEvent.Disconnected, (reason) => {
+      console.log('❌ [DISCONNECT] Disconnected from room, reason:', reason);
+      setIsConnected(false);
+      setParticipants([]);
+      setLocalVideoTrack(null);
+      setLocalAudioTrack(null);
+    });
+
+    newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+      console.log(`➡️ [PARTICIPANT] Connected: ${participant.identity}`);
+      console.log(`📊 [PARTICIPANT] Total participants: ${newRoom.numParticipants}`);
+      
+      setParticipants(prev => {
+        const updated = [...prev, participant];
+        console.log(`📊 [PARTICIPANT] Updated participants array: ${updated.length}`);
+        return updated;
+      });
+      
+      // Ensure our tracks are re-published for the new participant
+      enhanceTrackAvailability(newRoom);
+      
+      // Add welcome message for Hero bot
+      if (participant.identity === 'hero-bot') {
+        addMessage({
+          id: Date.now().toString(),
+          text: 'Hero AI assistant has joined the meeting! Say &quot;Hey Hero&quot; to ask questions.',
+          isHero: true,
+          timestamp: Date.now(),
+        });
+      }
+    });
+
+    newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+      console.log(`⬅️ [PARTICIPANT] Disconnected: ${participant.identity}`);
+      setParticipants(prev => {
+        const updated = prev.filter(p => p.identity !== participant.identity);
+        console.log(`📊 [PARTICIPANT] Updated participants array: ${updated.length}`);
+        return updated;
+      });
+    });
+
+    newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: any, participant: RemoteParticipant) => {
+      console.log(`⬇️ [TRACK] Subscribed to ${track.kind} from ${participant.identity}`);
+      
+      if (track.kind === Track.Kind.Video) {
+        const videoElement = track.attach();
+        videoElement.style.width = '100%';
+        videoElement.style.height = '100%';
+        videoElement.style.objectFit = 'cover';
+        
+        // Clear existing video and add new one
+        if (videoRef.current) {
+          videoRef.current.innerHTML = '';
+          videoRef.current.appendChild(videoElement);
+          console.log('✅ [TRACK] Remote video attached to UI');
+        }
+      } else if (track.kind === Track.Kind.Audio) {
+        const audioElement = track.attach();
+        if (audioRef.current) {
+          audioRef.current.srcObject = audioElement.srcObject;
+          audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
+          console.log('✅ [TRACK] Remote audio attached to UI');
+        }
+      }
+    });
+
+    newRoom.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+      console.log(`📤 [TRACK] Unsubscribed from ${track.kind}`);
+      track.detach();
+      
+      // Clear video area if it was a video track
+      if (track.kind === Track.Kind.Video && videoRef.current) {
+        videoRef.current.innerHTML = '';
+      }
+    });
+
+    newRoom.on(RoomEvent.TrackPublished, (publication: any, participant: RemoteParticipant) => {
+      console.log(`⬆️ [TRACK] Published ${publication.kind} from ${participant.identity}`);
+    });
+
+    newRoom.on(RoomEvent.TrackUnpublished, (publication: any, participant: RemoteParticipant) => {
+      console.log(`📤 [TRACK] Unpublished ${publication.kind} from ${participant.identity}`);
+    });
+
+    // Add ICE connection monitoring
+    newRoom.on(RoomEvent.ConnectionStateChanged, (state: any) => {
+      console.log(`🌐 [CONNECTION] Connection state changed: ${state}`);
+    });
+
+    console.log('✅ [EVENTS] Room event listeners configured');
+  };
+
+  const enhanceTrackAvailability = async (newRoom: Room) => {
+    console.log('🔧 [ENHANCE] Enhancing track availability for new participant...');
+    
+    try {
+      // Force re-enable tracks to ensure they're visible to new participants
+      if (localVideoTrack) {
+        await newRoom.localParticipant.publishTrack(localVideoTrack);
+        console.log('✅ [ENHANCE] Re-published video track');
+      }
+      
+      if (localAudioTrack) {
+        await newRoom.localParticipant.publishTrack(localAudioTrack);
+        console.log('✅ [ENHANCE] Re-published audio track');
+      }
+      
+      // Also force enable the camera and mic to trigger any pending publishes
+      await newRoom.localParticipant.setCameraEnabled(true);
+      await newRoom.localParticipant.setMicrophoneEnabled(true);
+      console.log('✅ [ENHANCE] Camera and microphone force-enabled');
+      
+    } catch (error) {
+      console.error('❌ [ENHANCE] Error enhancing track availability:', error);
+    }
+  }
 
   const addMessage = (message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
@@ -236,58 +347,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
   
-  const enableLocalMedia = async (room: Room) => {
-    try {
-      console.log('Creating and publishing local media tracks...');
-      
-      // Create and publish video track
-      const videoTrack = await createLocalVideoTrack();
-      await room.localParticipant.publishTrack(videoTrack);
-      setLocalVideoTrack(videoTrack);
-      console.log('✅ Video track published successfully');
-      
-      // Attach video to local preview
-      if (localVideoRef.current) {
-        videoTrack.attach(localVideoRef.current);
-        console.log('✅ Video track attached to local preview');
-      }
-      
-      // Create and publish audio track
-      const audioTrack = await createLocalAudioTrack();
-      await room.localParticipant.publishTrack(audioTrack);
-      setLocalAudioTrack(audioTrack);
-      console.log('✅ Audio track published successfully');
-      
-      console.log('Local media enabled successfully for room:', room.name);
-      
-    } catch (error) {
-      console.error('❌ Error enabling local media:', error);
-      // Try to enable media one by one with fallflows
-      try {
-        if (!localVideoTrack) {
-          const videoTrack = await createLocalVideoTrack();
-          await room.localParticipant.publishTrack(videoTrack);
-          setLocalVideoTrack(videoTrack);
-          
-          if (localVideoRef.current) {
-            videoTrack.attach(localVideoRef.current);
-          }
-        }
-      } catch (videoError) {
-        console.error('Failed to enable video:', videoError);
-      }
-      
-      try {
-        if (!localAudioTrack) {
-          const audioTrack = await createLocalAudioTrack();
-          await room.localParticipant.publishTrack(audioTrack);
-          setLocalAudioTrack(audioTrack);
-        }
-      } catch (audioError) {
-        console.error('Failed to enable audio:', audioError);
-      }
-    }
-  };
   
   const startTranscription = async (room: Room) => {
     try {
