@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
+import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, TrackPublication, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
 import ChatPanel, { ChatMessage } from './ChatPanel';
 
 interface MeetingPageProps {
@@ -107,16 +107,48 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         
         // Ensure our local media is published for the new participant
         if (newRoom.localParticipant) {
-          console.log('Ensuring local media tracks are available for new participant');
+          console.log('📱 New participant joined - ensuring media availability');
           
-          // Republish existing tracks if they exist
-          if (localVideoTrack) {
-            await newRoom.localParticipant.publishTrack(localVideoTrack);
-            console.log('Republished video track');
-          }
-          if (localAudioTrack) {
-            await newRoom.localParticipant.publishTrack(localAudioTrack);
-            console.log('Republished audio track');
+          // Force enable camera and microphone to ensure tracks are published
+          try {
+            console.log('🎥 Enabling camera...');
+            await newRoom.localParticipant.setCameraEnabled(true);
+            setIsVideoEnabled(true);
+            
+            console.log('🎤 Enabling microphone...');
+            await newRoom.localParticipant.setMicrophoneEnabled(true);
+            setIsAudioEnabled(true);
+            
+            // Give it a moment for the tracks to be ready
+            setTimeout(async () => {
+              // Double-check that tracks are published and create if needed
+              const videoTracks = Array.from(newRoom.localParticipant.videoTrackPublications.values());
+              const audioTracks = Array.from(newRoom.localParticipant.audioTrackPublications.values());
+              
+              console.log(`📊 Track status - Video: ${videoTracks.length}, Audio: ${audioTracks.length}`);
+              
+              // If no tracks are published, create them
+              if (videoTracks.length === 0) {
+                console.log('🔧 Creating missing video track...');
+                const videoTrack = await createLocalVideoTrack();
+                await newRoom.localParticipant.publishTrack(videoTrack);
+                setLocalVideoTrack(videoTrack);
+                
+                if (localVideoRef.current) {
+                  videoTrack.attach(localVideoRef.current);
+                }
+              }
+              
+              if (audioTracks.length === 0) {
+                console.log('🔧 Creating missing audio track...');
+                const audioTrack = await createLocalAudioTrack();
+                await newRoom.localParticipant.publishTrack(audioTrack);
+                setLocalAudioTrack(audioTrack);
+              }
+            }, 1000);
+            
+          } catch (error) {
+            console.error('❌ Error ensuring media availability:', error);
           }
         }
         
