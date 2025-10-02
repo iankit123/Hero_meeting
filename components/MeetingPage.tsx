@@ -101,15 +101,30 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         setIsConnected(false);
       });
 
-      newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+      newRoom.on(RoomEvent.ParticipantConnected, async (participant: RemoteParticipant) => {
         console.log('Participant connected:', participant.identity);
         setParticipants(prev => [...prev, participant]);
+        
+        // Ensure our local media is published for the new participant
+        if (newRoom.localParticipant) {
+          console.log('Ensuring local media tracks are available for new participant');
+          
+          // Republish existing tracks if they exist
+          if (localVideoTrack) {
+            await newRoom.localParticipant.publishTrack(localVideoTrack);
+            console.log('Republished video track');
+          }
+          if (localAudioTrack) {
+            await newRoom.localParticipant.publishTrack(localAudioTrack);
+            console.log('Republished audio track');
+          }
+        }
         
         // Add welcome message for Hero bot
         if (participant.identity === 'hero-bot') {
           addMessage({
             id: Date.now().toString(),
-            text: 'Hero AI assistant has joined the meeting! Say "Hey Hero" to ask questions.',
+            text: 'Hero AI assistant has joined the meeting! Say &quot;Hey Hero&quot; to ask questions.',
             isHero: true,
             timestamp: Date.now(),
           });
@@ -191,23 +206,54 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   
   const enableLocalMedia = async (room: Room) => {
     try {
+      console.log('Creating and publishing local media tracks...');
+      
       // Create and publish video track
       const videoTrack = await createLocalVideoTrack();
       await room.localParticipant.publishTrack(videoTrack);
       setLocalVideoTrack(videoTrack);
+      console.log('✅ Video track published successfully');
       
       // Attach video to local preview
       if (localVideoRef.current) {
         videoTrack.attach(localVideoRef.current);
+        console.log('✅ Video track attached to local preview');
       }
       
       // Create and publish audio track
       const audioTrack = await createLocalAudioTrack();
       await room.localParticipant.publishTrack(audioTrack);
       setLocalAudioTrack(audioTrack);
+      console.log('✅ Audio track published successfully');
+      
+      console.log('Local media enabled successfully for room:', room.name);
       
     } catch (error) {
-      console.error('Error enabling local media:', error);
+      console.error('❌ Error enabling local media:', error);
+      // Try to enable media one by one with fallflows
+      try {
+        if (!localVideoTrack) {
+          const videoTrack = await createLocalVideoTrack();
+          await room.localParticipant.publishTrack(videoTrack);
+          setLocalVideoTrack(videoTrack);
+          
+          if (localVideoRef.current) {
+            videoTrack.attach(localVideoRef.current);
+          }
+        }
+      } catch (videoError) {
+        console.error('Failed to enable video:', videoError);
+      }
+      
+      try {
+        if (!localAudioTrack) {
+          const audioTrack = await createLocalAudioTrack();
+          await room.localParticipant.publishTrack(audioTrack);
+          setLocalAudioTrack(audioTrack);
+        }
+      } catch (audioError) {
+        console.error('Failed to enable audio:', audioError);
+      }
     }
   };
   
@@ -592,6 +638,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     try {
       await room.localParticipant.setMicrophoneEnabled(!isAudioEnabled);
       setIsAudioEnabled(!isAudioEnabled);
+      console.log(`🎤 Audio ${!isAudioEnabled ? 'enabled' : 'disabled'}`);
     } catch (error) {
       console.error('Error toggling audio:', error);
     }
@@ -603,6 +650,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     try {
       await room.localParticipant.setCameraEnabled(!isVideoEnabled);
       setIsVideoEnabled(!isVideoEnabled);
+      console.log(`📹 Video ${!isVideoEnabled ? 'enabled' : 'disabled'}`);
     } catch (error) {
       console.error('Error toggling video:', error);
     }
