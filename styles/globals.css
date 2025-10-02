@@ -97,9 +97,11 @@ a {
   align-items: center;
   justify-content: center;
   flex: 1;
-  font-size: 18px;
-  color: #9ca3af;
+  flex-direction: column;
+  color: #e5e7eb;
+  text-align: center;
 }
+
 
 .video-preview {
   position: absolute;

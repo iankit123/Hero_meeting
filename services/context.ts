@@ -95,5 +95,6 @@ class ContextService {
 // Singleton instance
 const contextService = new ContextService();
 
-export { contextService, ConversationEntry };
+export { contextService };
+export type { ConversationEntry };
 export default contextService;
