@@ -989,7 +989,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                   🤖
                 </div>
                 <p style={{ color: '#9ca3af', fontSize: '14px', margin: '0' }}>
-                  Say "Hey Hero" or type a message
+                  Say &quot;Hey Hero&quot; or type a message
                 </p>
                 <p style={{ color: '#6b7280', fontSize: '12px', marginTop: '4px', margin: '4px 0 0 0' }}>
                   Hero understands the meeting context
