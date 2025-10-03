@@ -367,7 +367,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log(`📊 [TRACK] Track subscription details:`, {
         trackKind: track.kind,
         trackSource: track.source,
-        trackMuted: track.muted,
+        trackMuted: track.isMuted,
         participantIdentity: participant.identity
       });
       
