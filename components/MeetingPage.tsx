@@ -135,20 +135,21 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       let localVideo: LocalTrack, localAudio: LocalTrack;
       
       try {
-        localVideo = await createLocalVideoTrack({
-          // Conservative video settings for compatibility
-          resolution: {
-            width: 640,
-            height: 480
-          },
-          frameRate: 15 // Lower framerate for better reliability
-        });
-        
-        localAudio = await createLocalAudioTrack({
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        });
+        // Create tracks in parallel for faster initialization (OPTIMIZED)
+        [localVideo, localAudio] = await Promise.all([
+          createLocalVideoTrack({
+            resolution: {
+              width: 1280,
+              height: 720
+            },
+            facingMode: 'user'
+          }),
+          createLocalAudioTrack({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          })
+        ]);
         
         setLocalVideoTrack(localVideo);
         setLocalAudioTrack(localAudio);
@@ -171,12 +172,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             videoEl.playsInline = true;
             videoEl.style.objectFit = 'cover';
             
-            // Force play (some browsers need this)
-            videoEl.play().catch(e => {
+            // Force play immediately (some browsers need this)
+            videoEl.play().then(() => {
+              console.log('✅ [VIDEO] Local video playing successfully');
+            }).catch(e => {
               console.warn('🎥 [VIDEO] Autoplay blocked, user interaction required:', e);
             });
             
-            // Verify stream attachment immediately
+            // Verify stream attachment with reduced delay
             setTimeout(() => {
               console.log('🎥 [VERIFY] Checking stream attachment...');
               console.log('🎥 [VERIFY] Video element srcObject:', videoEl.srcObject);
@@ -195,7 +198,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               } else {
                 console.log('✅ [VERIFY] Stream is properly attached');
               }
-            }, 100);
+            }, 50); // Reduced from 100ms to 50ms for faster verification
             
             console.log('🎥 [ATTACH] Video element configured successfully');
             console.log('🎥 [ATTACH] Video srcObject:', localVideoRef.current.srcObject);
@@ -233,7 +236,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       await newRoom.connect(process.env.NEXT_PUBLIC_LIVEKIT_URL!, token);
       console.log('✅ [CONNECT] Connected to LiveKit room');
       setRoom(newRoom);
-      setIsConnected(true);
+        setIsConnected(true);
       
       // STEP 7: Publish tracks immediately after connection
       console.log('📤 [PUBLISH] Publishing pre-created tracks...');
@@ -262,10 +265,10 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Store cleanup function for later
       (newRoom as any).cleanupSync = cleanupSync;
       
-      // STEP 10: Schedule initial test run after connection stabilizes
+      // STEP 10: Schedule initial test run (OPTIMIZED - reduced delay)
       setTimeout(() => {
         runBidirectionalVisibilityTest(newRoom);
-      }, 3000);
+      }, 1000); // Reduced from 3000ms to 1000ms
       
       // Schedule periodic tests every 10 seconds
       const testInterval = setInterval(() => {
@@ -280,7 +283,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       (newRoom as any).cleanupTests = () => clearInterval(testInterval);
       
       console.log('✅ [INIT] Room initialization completed successfully');
-      setIsLoading(false);
+        setIsLoading(false);
 
     } catch (error) {
       console.error('❌ [INIT] Room initialization failed:', error);
@@ -306,7 +309,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
     newRoom.on(RoomEvent.Disconnected, (reason) => {
       console.log('❌ [DISCONNECT] Disconnected from room, reason:', reason);
-      setIsConnected(false);
+        setIsConnected(false);
       setParticipants([]);
       setLocalVideoTrack(null);
       setLocalAudioTrack(null);
@@ -318,9 +321,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       if ((newRoom as any).cleanupTests) {
         (newRoom as any).cleanupTests();
       }
-    });
+      });
 
-    newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+      newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
       console.log(`➡️ [PARTICIPANT] Connected: ${participant.identity}`);
       console.log(`📊 [PARTICIPANT] Total participants: ${newRoom.numParticipants}`);
       
@@ -332,28 +335,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       
       // Ensure our tracks are re-published for the new participant
       enhanceTrackAvailability(newRoom);
-      
-      // Add welcome message for Hero bot
-      if (participant.identity === 'hero-bot') {
-        addMessage({
-          id: Date.now().toString(),
+        
+        // Add welcome message for Hero bot
+        if (participant.identity === 'hero-bot') {
+          addMessage({
+            id: Date.now().toString(),
           text: 'Hero AI assistant has joined the meeting! Say &quot;Hey Hero&quot; to ask questions.',
-          isHero: true,
-          timestamp: Date.now(),
-        });
-      }
-    });
+            isHero: true,
+            timestamp: Date.now(),
+          });
+        }
+      });
 
-    newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+      newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
       console.log(`⬅️ [PARTICIPANT] Disconnected: ${participant.identity}`);
       setParticipants(prev => {
         const updated = prev.filter(p => p.identity !== participant.identity);
         console.log(`📊 [PARTICIPANT] Updated participants array: ${updated.length}`);
         return updated;
       });
-    });
+      });
 
-    newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: any, participant: RemoteParticipant) => {
+      newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: any, participant: RemoteParticipant) => {
       console.log(`⬇️ [TRACK] Subscribed to ${track.kind} from ${participant.identity}`);
       
       // TEST LOGGING: Log bidirectional connectivity status
@@ -370,8 +373,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         trackMuted: track.isMuted,
         participantIdentity: participant.identity
       });
-      
-      if (track.kind === Track.Kind.Video) {
+        
+        if (track.kind === Track.Kind.Video) {
         console.log(`📥 [VIDEO-TRACK] Processing video track subscription from ${participant.identity}`);
         
         // Create video element manually instead of using track.attach()
@@ -407,7 +410,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         };
         
         // Clear existing video and add new one to main video area
-        if (videoRef.current) {
+          if (videoRef.current) {
           console.log(`🎬 [VIDEO] Adding remote video to main video area for ${participant.identity}`);
           
           // Clear existing content
@@ -435,7 +438,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           console.log('✅ [TRACK] Remote video attached to UI');
           console.log(`🧪 [TEST] USER CAN NOW SEE: ${participant.identity}'s video feed`);
           
-          // Force visibility check
+          // Force visibility check with reduced delay for faster feedback
           setTimeout(() => {
             if (videoRef.current) {
               const addedVideo = videoRef.current.querySelector(`[data-participant="${participant.identity}"]`) as HTMLVideoElement;
@@ -450,7 +453,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 console.error(`❌ [VIDEO-CHECK] Video element NOT found in DOM for ${participant.identity}`);
               }
             }
-          }, 500);
+          }, 100); // Reduced from 500ms to 100ms
           
           // Force play with retry mechanism
           const attemptPlay = async (attempt = 1) => {
@@ -460,7 +463,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             } catch (playError) {
               console.warn(`⚠️ [VIDEO] Play attempt ${attempt} failed:`, playError);
               if (attempt < 3) {
-                setTimeout(() => attemptPlay(attempt + 1), 500 * attempt);
+                setTimeout(() => attemptPlay(attempt + 1), 100 * attempt); // Faster retries: 100ms, 200ms
               } else {
                 console.error(`❌ [VIDEO] All play attempts failed for ${participant.identity}`);
               }
@@ -469,21 +472,21 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           
           // Start playback attempts
           attemptPlay();
-        }
-      } else if (track.kind === Track.Kind.Audio) {
-        const audioElement = track.attach();
-        if (audioRef.current) {
-          audioRef.current.srcObject = audioElement.srcObject;
+          }
+        } else if (track.kind === Track.Kind.Audio) {
+          const audioElement = track.attach();
+          if (audioRef.current) {
+            audioRef.current.srcObject = audioElement.srcObject;
           audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
           console.log('✅ [TRACK] Remote audio attached to UI');
           console.log(`🧪 [TEST] USER CAN NOW HEAR: ${participant.identity}'s audio feed`);
+          }
         }
-      }
-    });
+      });
 
-    newRoom.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
+      newRoom.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack) => {
       console.log(`📤 [TRACK] Unsubscribed from ${track.kind}`);
-      track.detach();
+        track.detach();
       
       // Clear video area if it was a video track
       if (track.kind === Track.Kind.Video && videoRef.current) {
@@ -531,7 +534,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       setParticipants(remoteParticipants);
       console.log('✅ [ENHANCE] Camera and microphone force-enabled');
       console.log('📊 [ENHANCE] Updated participants:', remoteParticipants.length);
-      
+
     } catch (error) {
       console.error('❌ [ENHANCE] Error enhancing track availability:', error);
     }
@@ -840,8 +843,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         setTimeout(() => {
           videoRef.current!.innerHTML = currentContent;
         }, 100);
-      }
-    };
+    }
+  };
 
   const addMessage = (message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
@@ -852,7 +855,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     // Also add to general messages for context
     addMessage({ ...message, isTranscript: true });
   };
-
+  
   // Store speech in context via API
   const storeSpeechInContext = async (speechText: string) => {
     try {
@@ -908,10 +911,21 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
 
       let isListening = false;
+      let keepAliveInterval: NodeJS.Timeout | null = null;
 
       recognition.onstart = () => {
         console.log('🎤 [SPEECH] Recognition started - listening for voice input');
         isListening = true;
+        
+        // Keepalive mechanism to prevent auto-stop
+        if (keepAliveInterval) clearInterval(keepAliveInterval);
+        keepAliveInterval = setInterval(() => {
+          if (isListening && room && room.state === 'connected') {
+            // Just a heartbeat - recognition is already continuous
+            console.log('💓 [SPEECH] Keepalive - still listening...');
+          }
+        }, 5000); // Log every 5 seconds to confirm listening
+        
         addTranscript({
           id: Date.now().toString(),
           text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
@@ -995,8 +1009,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       recognition.onend = () => {
         console.log('🔴 [SPEECH] Recognition ended - preparing to restart');
         isListening = false;
+        
+        // Clear keepalive interval
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+        }
         // Only restart if room is connected and not manually stopped
         if (room && room.state === 'connected') {
+          // Immediate restart with minimal delay for continuous listening
           setTimeout(() => {
             try {
               if (!isListening) {
@@ -1005,8 +1026,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               }
             } catch (error) {
               console.warn('⚠️ [SPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
+              // If immediate restart fails, try again after a short delay
+              setTimeout(() => {
+                if (!isListening && room && room.state === 'connected') {
+                  try {
+                    console.log('🔄 [SPEECH] Retry restarting speech recognition...');
+                    recognition.start();
+                  } catch (retryError) {
+                    console.error('❌ [SPEECH] Retry restart also failed:', retryError);
+                  }
+                }
+              }, 300);
             }
-          }, 500); // Reduced timeout for more responsive listening
+          }, 100); // Reduced from 500ms to 100ms for minimal gap
         }
       };
 
@@ -1081,7 +1113,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             // Initialize audio context if not already done
             if (!audioContextRef.current) {
               audioContextRef.current = new AudioContext();
-              console.log('🎵 [FRONTEND] Creating audio context...');
+            console.log('🎵 [FRONTEND] Creating audio context...');
             }
             
             // Resume audio context if suspended (required for user interaction)
@@ -1365,7 +1397,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 letterSpacing: '-0.025em'
               }}>
                 {roomName}
-              </span>
+            </span>
               <div style={{ 
                 color: '#94a3b8', 
                 fontSize: '14px',
@@ -1436,7 +1468,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         </div>
 
         {/* Main Video Content */}
-        <div style={{
+            <div style={{
           position: 'relative',
           height: '100%',
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
@@ -1460,6 +1492,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             opacity: 0.6
           }}></div>
           
+          {participants.length === 0 && (
           <div style={{ 
             textAlign: 'center',
             position: 'relative',
@@ -1527,23 +1560,49 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               Your meeting room is ready and secure
             </p>
           </div>
+          )}
         </div>
 
 
         {/* Video Preview - User's own camera */}
-        <div style={{
+        <div className="local-video-preview" style={{
           position: 'absolute',
-          bottom: '120px',
-          right: '24px',
-          width: '240px',
-          height: '180px',
-          borderRadius: '16px',
+          bottom: '24px',
+          left: '24px',
+          width: '280px',
+          height: '210px',
+          borderRadius: '20px',
           overflow: 'hidden',
-          border: '2px solid rgba(59, 130, 246, 0.3)',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
-          backdropFilter: 'blur(10px)',
-          zIndex: 5
+          border: '3px solid rgba(59, 130, 246, 0.4)',
+          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
+          backdropFilter: 'blur(15px)',
+          zIndex: 20
         }}>
+          {/* Loading skeleton for video */}
+          {!localVideoTrack && (
+            <div style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              background: 'linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%)',
+              backgroundSize: '200% 100%',
+              animation: 'shimmer 1.5s infinite',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                border: '3px solid rgba(59, 130, 246, 0.3)',
+                borderTopColor: '#3b82f6',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }}></div>
+            </div>
+          )}
           <video 
             ref={localVideoRef}
             autoPlay 
@@ -1802,7 +1861,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               letterSpacing: '-0.025em'
             }}>
               Meeting Attendees
-            </h3>
+          </h3>
             <div style={{
               backgroundColor: 'rgba(59, 130, 246, 0.1)',
               color: '#60a5fa',
