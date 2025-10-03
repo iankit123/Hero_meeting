@@ -46,6 +46,17 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
     const handleUserInteraction = () => {
       initializeAudio();
+      
+      // Also retry video playback on user interaction (for autoplay blocking)
+      if (localVideoRef.current && localVideoTrack) {
+        console.log('🎥 [INTERACTION] User interaction detected - retrying video playback');
+        localVideoRef.current.play().then(() => {
+          console.log('✅ [VIDEO] Video playback resumed after user interaction');
+        }).catch(e => {
+          console.warn('❌ [VIDEO] Still unable to play video after interaction:', e);
+        });
+      }
+      
       // Remove event listeners after first interaction
       document.removeEventListener('click', handleUserInteraction);
       document.removeEventListener('keydown', handleUserInteraction);
@@ -62,7 +73,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       document.removeEventListener('keydown', handleUserInteraction);
       document.removeEventListener('touchstart', handleUserInteraction);
     };
-  }, []);
+  }, [localVideoTrack]);
 
   const initializeRoom = async () => {
     try {
@@ -121,7 +132,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
       // STEP 5: PRE-CREATE tracks before connection
       console.log('🎥 [TRACKS] Pre-creating media tracks...');
-      let localVideo, localAudio;
+      let localVideo: LocalTrack, localAudio: LocalTrack;
       
       try {
         localVideo = await createLocalVideoTrack({
@@ -142,10 +153,73 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         setLocalVideoTrack(localVideo);
         setLocalAudioTrack(localAudio);
         
-        // Attach video to preview immediately
+        // Attach video to preview immediately with comprehensive debugging
         if (localVideoRef.current) {
-          localVideo.attach(localVideoRef.current);
-          console.log('✅ [TRACKS] Video track attached to preview');
+          console.log('🎥 [ATTACH] Starting video attachment process...');
+          console.log('🎥 [ATTACH] Video track:', localVideo);
+          console.log('🎥 [ATTACH] Video element:', localVideoRef.current);
+          
+          try {
+            // Attach the track to the video element
+            localVideo.attach(localVideoRef.current);
+            console.log('✅ [TRACKS] Video track attached to preview');
+            
+            // Configure video element properties
+            const videoEl = localVideoRef.current;
+            videoEl.autoplay = true;
+            videoEl.muted = true;
+            videoEl.playsInline = true;
+            videoEl.style.objectFit = 'cover';
+            
+            // Force play (some browsers need this)
+            videoEl.play().catch(e => {
+              console.warn('🎥 [VIDEO] Autoplay blocked, user interaction required:', e);
+            });
+            
+            // Verify stream attachment immediately
+            setTimeout(() => {
+              console.log('🎥 [VERIFY] Checking stream attachment...');
+              console.log('🎥 [VERIFY] Video element srcObject:', videoEl.srcObject);
+              console.log('🎥 [VERIFY] Video tracks:', (videoEl.srcObject as MediaStream)?.getTracks() || 'No tracks');
+              
+              if (!videoEl.srcObject) {
+                console.log('🔧 [FIX] Attempting to manually attach stream...');
+                try {
+                  // LiveKit tracks need to be re-attached to get stream
+                  localVideo.attach(videoEl);
+                  console.log('✅ [FIX] Track re-attached to get stream');
+                  videoEl.play().catch(e => console.warn('Manual play failed:', e));
+                } catch (manualError) {
+                  console.error('❌ [ERROR] Manual track re-attachment failed:', manualError);
+                }
+              } else {
+                console.log('✅ [VERIFY] Stream is properly attached');
+              }
+            }, 100);
+            
+            console.log('🎥 [ATTACH] Video element configured successfully');
+            console.log('🎥 [ATTACH] Video srcObject:', localVideoRef.current.srcObject);
+            
+          } catch (attachError) {
+            console.error('❌ [TRACKS] Failed to attach video to preview:', attachError);
+            
+            // Multiple retry attempts with increasing delays
+            [100, 500, 1000].forEach((delay, index) => {
+              setTimeout(() => {
+                if (localVideoRef.current) {
+                  try {
+                    localVideo.attach(localVideoRef.current);
+                    console.log(`✅ [TRACKS] Video track attached to preview (retry ${index + 1})`);
+                    localVideoRef.current.play().catch(e => console.warn('Retry play failed:', e));
+                  } catch (retryError) {
+                    console.error(`❌ [TRACKS] Retry ${index + 1} failed:`, retryError);
+                  }
+                }
+              }, delay);
+            });
+          }
+        } else {
+          console.error('❌ [TRACKS] Video element ref is null - cannot attach track');
         }
         
         console.log('✅ [TRACKS] Media tracks pre-created successfully');
@@ -181,6 +255,30 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('🎙️ [SERVICES] Starting transcription service...');
       startTranscription(newRoom);
       
+      // STEP 9: Start participant sync
+      console.log('🔄 [SYNC] Starting participant sync...');
+      const cleanupSync = syncParticipantsPeriodically(newRoom);
+      
+      // Store cleanup function for later
+      (newRoom as any).cleanupSync = cleanupSync;
+      
+      // STEP 10: Schedule initial test run after connection stabilizes
+      setTimeout(() => {
+        runBidirectionalVisibilityTest(newRoom);
+      }, 3000);
+      
+      // Schedule periodic tests every 10 seconds
+      const testInterval = setInterval(() => {
+        if (newRoom.state === 'connected') {
+          runBidirectionalVisibilityTest(newRoom);
+        } else {
+          clearInterval(testInterval);
+        }
+      }, 30000); // Reduced frequency: every 30 seconds instead of 10
+      
+      // Store test cleanup function
+      (newRoom as any).cleanupTests = () => clearInterval(testInterval);
+      
       console.log('✅ [INIT] Room initialization completed successfully');
       setIsLoading(false);
 
@@ -198,6 +296,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('✅ [CONNECT] Connected to room:', newRoom.name);
       console.log('👀 [CONNECT] Local participant:', newRoom.localParticipant.identity);
       console.log('📺 [CONNECT] Room details:', newRoom.name);
+      console.log('📊 [CONNECT] Initial participant count:', newRoom.numParticipants);
+      
+      // Update participants list immediately after connection
+      const remoteParticipants = Array.from(newRoom.remoteParticipants.values());
+      setParticipants(remoteParticipants);
+      console.log('📊 [CONNECT] Initial remote participants:', remoteParticipants.length);
     });
 
     newRoom.on(RoomEvent.Disconnected, (reason) => {
@@ -206,6 +310,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       setParticipants([]);
       setLocalVideoTrack(null);
       setLocalAudioTrack(null);
+      
+      // Cleanup periodic sync and tests
+      if ((newRoom as any).cleanupSync) {
+        (newRoom as any).cleanupSync();
+      }
+      if ((newRoom as any).cleanupTests) {
+        (newRoom as any).cleanupTests();
+      }
     });
 
     newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
@@ -244,17 +356,119 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: any, participant: RemoteParticipant) => {
       console.log(`⬇️ [TRACK] Subscribed to ${track.kind} from ${participant.identity}`);
       
+      // TEST LOGGING: Log bidirectional connectivity status
+      const localTracks = Array.from(newRoom.localParticipant.trackPublications.values());
+      const remoteTracks = Array.from(participant.trackPublications.values());
+      console.log(`🧪 [TEST] BIDIRECTIONAL CHECK:`);
+      console.log(`🧪 [TEST] Local participant published tracks: ${localTracks.length}:`, localTracks.map(t => t.kind));
+      console.log(`🧪 [TEST] Remote participant ${participant.identity} tracks: ${remoteTracks.length}:`, remoteTracks.map(t => t.kind));
+      
+      // Log track details for debugging
+      console.log(`📊 [TRACK] Track subscription details:`, {
+        trackKind: track.kind,
+        trackSource: track.source,
+        trackMuted: track.muted,
+        participantIdentity: participant.identity
+      });
+      
       if (track.kind === Track.Kind.Video) {
-        const videoElement = track.attach();
+        console.log(`📥 [VIDEO-TRACK] Processing video track subscription from ${participant.identity}`);
+        
+        // Create video element manually instead of using track.attach()
+        const videoElement = document.createElement('video');
         videoElement.style.width = '100%';
         videoElement.style.height = '100%';
         videoElement.style.objectFit = 'cover';
+        videoElement.setAttribute('autoplay', 'true');
+        videoElement.setAttribute('muted', 'true');
+        videoElement.setAttribute('playsinline', 'true');
         
-        // Clear existing video and add new one
+        // Attach track to our custom element
+        track.attach(videoElement);
+        
+        // Add test identifier to video element
+        videoElement.setAttribute('data-participant', participant.identity);
+        videoElement.setAttribute('data-test-id', `remote-video-${participant.identity}`);
+        
+        // Add event listeners for debugging
+        videoElement.onloadedmetadata = () => {
+          console.log(`📹 [VIDEO] Remote video metadata loaded for ${participant.identity}:`, {
+            videoWidth: videoElement.videoWidth,
+            videoHeight: videoElement.videoHeight
+          });
+        };
+        
+        videoElement.oncanplay = () => {
+          console.log(`✅ [VIDEO] Remote video can play for ${participant.identity}`);
+        };
+        
+        videoElement.onerror = (e) => {
+          console.error(`❌ [VIDEO] Error playing remote video for ${participant.identity}:`, e);
+        };
+        
+        // Clear existing video and add new one to main video area
         if (videoRef.current) {
+          console.log(`🎬 [VIDEO] Adding remote video to main video area for ${participant.identity}`);
+          
+          // Clear existing content
           videoRef.current.innerHTML = '';
-          videoRef.current.appendChild(videoElement);
+          
+          // Style the video element for main display
+          videoElement.style.position = 'absolute';
+          videoElement.style.top = '0';
+          videoElement.style.left = '0';
+          videoElement.style.width = '100%';
+          videoElement.style.height = '100%';
+          videoElement.style.objectFit = 'cover';
+          videoElement.style.zIndex = '10';
+          videoElement.style.backgroundColor = 'black'; // Fallback color
+          
+          // Add container div for better positioning
+          const videoContainer = document.createElement('div');
+          videoContainer.style.position = 'relative';
+          videoContainer.style.width = '100%';
+          videoContainer.style.height = '100%';
+          videoContainer.style.backgroundColor = 'black';
+          videoContainer.appendChild(videoElement);
+          
+          videoRef.current.appendChild(videoContainer);
           console.log('✅ [TRACK] Remote video attached to UI');
+          console.log(`🧪 [TEST] USER CAN NOW SEE: ${participant.identity}'s video feed`);
+          
+          // Force visibility check
+          setTimeout(() => {
+            if (videoRef.current) {
+              const addedVideo = videoRef.current.querySelector(`[data-participant="${participant.identity}"]`) as HTMLVideoElement;
+              if (addedVideo) {
+                console.log(`✅ [VIDEO-CHECK] Video element found in DOM:`, {
+                  hasSrcObject: !!addedVideo.srcObject,
+                  dimensions: `${addedVideo.videoWidth}x${addedVideo.videoHeight}`,
+                  readyState: addedVideo.readyState,
+                  visible: addedVideo.offsetWidth > 0 && addedVideo.offsetHeight > 0
+                });
+              } else {
+                console.error(`❌ [VIDEO-CHECK] Video element NOT found in DOM for ${participant.identity}`);
+              }
+            }
+          }, 500);
+          
+          // Force play with retry mechanism
+          const attemptPlay = async (attempt = 1) => {
+            try {
+              await videoElement.play();
+              console.log(`✅ [VIDEO] Remote video playing successfully for ${participant.identity}`);
+            } catch (playError) {
+              console.warn(`⚠️ [VIDEO] Play attempt ${attempt} failed:`, playError);
+              if (attempt < 3) {
+                setTimeout(() => attemptPlay(attempt + 1), 500 * attempt);
+              } else {
+                console.error(`❌ [VIDEO] All play attempts failed for ${participant.identity}`);
+              }
+            }
+          };
+          
+          // Start playback attempts
+          attemptPlay();
         }
       } else if (track.kind === Track.Kind.Audio) {
         const audioElement = track.attach();
@@ -262,6 +476,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           audioRef.current.srcObject = audioElement.srcObject;
           audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
           console.log('✅ [TRACK] Remote audio attached to UI');
+          console.log(`🧪 [TEST] USER CAN NOW HEAR: ${participant.identity}'s audio feed`);
         }
       }
     });
@@ -310,12 +525,323 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Also force enable the camera and mic to trigger any pending publishes
       await newRoom.localParticipant.setCameraEnabled(true);
       await newRoom.localParticipant.setMicrophoneEnabled(true);
+      
+      // Force refresh participant list to ensure accurate count
+      const remoteParticipants = Array.from(newRoom.remoteParticipants.values());
+      setParticipants(remoteParticipants);
       console.log('✅ [ENHANCE] Camera and microphone force-enabled');
+      console.log('📊 [ENHANCE] Updated participants:', remoteParticipants.length);
       
     } catch (error) {
       console.error('❌ [ENHANCE] Error enhancing track availability:', error);
     }
   }
+
+  const syncParticipantsPeriodically = (newRoom: Room) => {
+    // Sync participant count every 2 seconds to ensure consistency
+    const syncInterval = setInterval(() => {
+      if (newRoom && newRoom.state === 'connected') {
+        const remoteParticipants = Array.from(newRoom.remoteParticipants.values());
+        setParticipants(prevParticipants => {
+          const currentCount = remoteParticipants.length;
+          const prevCount = prevParticipants.length;
+          
+          if (currentCount !== prevCount) {
+            console.log(`🔄 [SYNC] Participant count changed: ${prevCount} → ${currentCount}`);
+            return remoteParticipants;
+          }
+          return prevParticipants;
+        });
+      }
+    }, 2000);
+    
+    // Clear interval when component unmounts
+    return () => clearInterval(syncInterval);
+  };
+
+  const runBidirectionalVisibilityTest = (roomToTest?: Room) => {
+    const testRoom = roomToTest || room;
+    if (!testRoom || testRoom.state !== 'connected') {
+      console.log('🧪 [TEST] Cannot run test - room not connected');
+      return;
+    }
+    console.log(`🧪 [TEST] === BIDIRECTIONAL VISIBILITY TEST START ===`);
+    console.log(`🧪 [TEST] Test running for: ${testRoom.localParticipant.identity}`);
+    console.log(`🧪 [TEST] Test timestamp: ${new Date().toISOString()}`);
+    
+    // Test 1: Local Media Status
+    const localVideoTracks = Array.from(testRoom.localParticipant.videoTrackPublications.values());
+    const localAudioTracks = Array.from(testRoom.localParticipant.audioTrackPublications.values());
+    console.log(`🧪 [TEST] LOCAL MEDIA STATUS:`);
+    console.log(`🧪 [TEST] LOCAL VIDEO: ${localVideoTracks.length > 0 ? '✅ PUBLISHED' : '❌ NOT PUBLISHED'}`);
+    console.log(`🧪 [TEST] LOCAL AUDIO: ${localAudioTracks.length > 0 ? '✅ PUBLISHED' : '❌ NOT PUBLISHED'}`);
+    
+    // Test 2: Local Video Element Status
+    if (localVideoRef.current) {
+      const localVideo = localVideoRef.current;
+      console.log(`🧪 [TEST] LOCAL VIDEO ELEMENT:`);
+      console.log(`🧪 [TEST] Video stream exists: ${localVideo.srcObject ? '✅ YES' : '❌ NO'}`);
+      console.log(`🧪 [TEST] Video paused: ${localVideo.paused ? '❌ YES' : '✅ NO'}`);
+      console.log(`🧪 [TEST] Video ready state: ${localVideo.readyState}`);
+      console.log(`🧪 [TEST] Video dimensions: ${localVideo.videoWidth}x${localVideo.videoHeight}`);
+      
+      // Additional debugging for stream issues
+      if (localVideo.srcObject) {
+        const stream = localVideo.srcObject as MediaStream;
+        const videoTracks = stream.getVideoTracks();
+        console.log(`🧪 [TEST] Stream video tracks: ${videoTracks.length}`);
+        if (videoTracks.length > 0) {
+          console.log(`🧪 [TEST] Track label: ${videoTracks[0].label}`);
+          console.log(`🧪 [TEST] Track enabled: ${videoTracks[0].enabled}`);
+          console.log(`🧪 [TEST] Track muted: ${videoTracks[0].muted}`);
+          console.log(`🧪 [TEST] Track ready state: ${videoTracks[0].readyState}`);
+        }
+      } else {
+        console.log(`🧪 [TEST] CRITICAL: No srcObject - this is why preview is black/grey!`);
+        console.log(`🧪 [TEST] Attempting automatic stream attachment...`);
+        
+        // Try multiple approaches to get video stream working
+        if (localVideoTrack) {
+          try {
+            console.log(`🔧 [TEST] Attempting comprehensive stream fix...`);
+            
+            // Method 1: Re-attach track
+            localVideoTrack.attach(localVideo);
+            console.log(`📍 [TEST] Method 1: Track re-attached`);
+            
+            // Method 2: Force video element refresh
+            setTimeout(() => {
+              if (!localVideo.srcObject) {
+                try {
+                  // Method 3: Try direct stream assignment if track has mediaStream property
+                  const mediaStream = (localVideoTrack as any).mediaStream;
+                  if (mediaStream) {
+                    localVideo.srcObject = mediaStream;
+                    console.log(`✅ [TEST] Method 3: Direct stream assignment successful`);
+                  } else {
+                    console.log(`⚠️ [TEST] No mediaStream property available on track`);
+                  }
+                } catch (directError) {
+                  console.error(`❌ [TEST] Direct stream assignment failed:`, directError);
+                }
+                
+                // Method 4: Try recreating track attachment
+                setTimeout(() => {
+                  if (!localVideo.srcObject) {
+                    console.log(`🔧 [TEST] Method 4: Recreating track attachment...`);
+                    try {
+                      const videoSrc = localVideo.src;
+                      if (!videoSrc) {
+                        // Force reload of video element
+                        localVideo.load();
+                      }
+                    } catch (reloadError) {
+                      console.error(`❌ [TEST] Video reload failed:`, reloadError);
+                    }
+                  }
+                }, 500);
+              } else {
+                console.log(`✅ [TEST] Stream successfully attached via re-attach`);
+              }
+            }, 200);
+            
+            localVideo.play().catch(e => console.warn('Auto-play failed:', e));
+          } catch (streamError) {
+            console.error(`❌ [TEST] Auto-attachment failed:`, streamError);
+          }
+        }
+      }
+    }
+    
+    // Test 3: Remote Participants Status
+    const remoteParticipants = Array.from(testRoom.remoteParticipants.values());
+    console.log(`🧪 [TEST] REMOTE PARTICIPANTS: ${remoteParticipants.length}`);
+    
+    remoteParticipants.forEach((participant, index) => {
+      const participantVideoTracks = Array.from(participant.videoTrackPublications.values());
+      const participantAudioTracks = Array.from(participant.audioTrackPublications.values());
+      
+      console.log(`🧪 [TEST] PARTICIPANT ${index + 1}: ${participant.identity}`);
+      console.log(`🧪 [TEST] Has video: ${participantVideoTracks.length > 0 ? '✅ YES' : '❌ NO'}`);
+      console.log(`🧪 [TEST] Has audio: ${participantAudioTracks.length > 0 ? '✅ YES' : '❌ NO'}`);
+      console.log(`🧪 [TEST] Connection state: ${participant.connectionQuality}`);
+    });
+    
+    // Test 4: Local video preview visibility
+    const localVideoEl = (document.querySelector('video[ref="localVideoRef"]') || localVideoRef.current) as HTMLVideoElement;
+    if (localVideoEl) {
+      console.log(`🧪 [TEST] LOCAL PREVIEW:`);
+      console.log(`🧪 [TEST] Element visible: ${localVideoEl.offsetWidth > 0 && localVideoEl.offsetHeight > 0 ? '✅ YES' : '❌ NO'}`);
+      console.log(`🧪 [TEST] Element dimensions: ${localVideoEl.offsetWidth}x${localVideoEl.offsetHeight}`);
+    }
+    
+    // Test 5: Remote video feeds visibility  
+    const remoteVideoElements = document.querySelectorAll('[data-test-id^="remote-video-"]') as NodeListOf<HTMLVideoElement>;
+    console.log(`🧪 [TEST] REMOTE VIDEO FEEDS: ${remoteVideoElements.length} visible`);
+    remoteVideoElements.forEach((videoEl, index) => {
+      console.log(`🧪 [TEST] Remote video ${index + 1}: ${videoEl.offsetWidth}x${videoEl.offsetHeight} (${videoEl.getAttribute('data-participant')})`);
+    });
+    
+    console.log(`🧪 [TEST] === TEST COMPLETE ===`);
+    
+    // Display test results in UI
+    const testSummary = {
+      localVideoPublished: localVideoTracks.length > 0,
+      localAudioPublished: localAudioTracks.length > 0,
+      localPreviewVisible: localVideoEl && localVideoEl!.offsetWidth > 0,
+      remoteParticipantsCount: remoteParticipants.length,
+      remoteVideoFeedsVisible: remoteVideoElements.length
+    };
+    
+      console.log(`🧪 [TEST] SUMMARY:`, testSummary);
+      return testSummary;
+    };
+
+    // Make test function globally available for manual testing
+    (window as any).runVisibilityTest = () => runBidirectionalVisibilityTest();
+    
+    // Make emergency video stream fix available globally
+    (window as any).fixVideoStream = async () => {
+      if (!localVideoTrack || !localVideoRef.current) return;
+      
+      console.log(`🚨 [EMERGENCY-FIX] Starting emergency video stream repair...`);
+      
+      try {
+        // Get fresh user media
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true
+        });
+        
+        console.log(`🚨 [EMERGENCY-FIX] Got fresh media stream:`, mediaStream);
+        
+        // Attach to video element
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = mediaStream;
+          await localVideoRef.current.play();
+          console.log(`✅ [EMERGENCY-FIX] Emergency stream attached and playing!`);
+        }
+        
+        // Also republish with LiveKit
+        if (room) {
+          const newVideoTrack = await room.localParticipant.setCameraEnabled(true);
+          console.log(`🚨 [EMERGENCY-FIX] Republished video track to LiveKit`);
+        }
+        
+      } catch (error) {
+        console.error(`❌ [EMERGENCY-FIX] Emergency fix failed:`, error);
+      }
+    };
+    
+    // Automatically try emergency fix after 10 seconds if still no stream
+    setTimeout(() => {
+      if (localVideoRef.current && !localVideoRef.current.srcObject) {
+        console.log(`⚠️ [AUTO-FIX] No video stream detected after 10s, triggering emergency fix...`);
+        (window as any).fixVideoStream();
+      }
+    }, 10000);
+    
+    // Periodically check for missed remote video tracks and force attachment
+    const checkForMissedTracks = () => {
+      if (!room || room.state !== 'connected') return;
+      
+      console.log(`🔍 [MISSED-TRACK-CHECK] Checking for missed track subscriptions...`);
+      
+      const remoteParticipants = Array.from(room.remoteParticipants.values());
+      remoteParticipants.forEach(participant => {
+        const videoTracks = Array.from(participant.videoTrackPublications.values());
+        videoTracks.forEach(publication => {
+          if (publication.track && publication.isSubscribed) {
+            const participantId = participant.identity;
+            const existingVideo = videoRef.current?.querySelector(`[data-participant="${participantId}"]`);
+            
+            if (!existingVideo) {
+              console.log(`🚨 [MISSED-TRACK] Found subscribed video track for ${participantId} that's not in DOM - forcing attachment`);
+              
+              // Force re-subscribe and attach
+              try {
+                const videoElement = publication.track.attach();
+                videoElement.style.width = '100%';
+                videoElement.style.height = '100%';
+                videoElement.style.objectFit = 'cover';
+                videoElement.setAttribute('data-participant', participantId);
+                videoElement.setAttribute('data-test-id', `remote-video-forced-${participantId}`);
+                
+                if (videoRef.current) {
+                  videoRef.current.innerHTML = '';
+                  videoRef.current.appendChild(videoElement);
+                  videoElement.play().catch(e => console.warn('Forced track play failed:', e));
+                  console.log(`✅ [MISSED-TRACK] Forced attachment successful for ${participantId}`);
+                }
+              } catch (error) {
+                console.error(`❌ [MISSED-TRACK] Forced attachment failed:`, error);
+              }
+            } else {
+              console.log(`✅ [MISSED-TRACK] Video for ${participantId} already exists in DOM`);
+            }
+          }
+        });
+      });
+    };
+    
+    // Run missed track check every 15 seconds (reduced frequency)
+    const missedTrackInterval = setInterval(checkForMissedTracks, 15000);
+    setTimeout(() => clearInterval(missedTrackInterval), 60000); // Stop after 60 seconds
+    
+    // Global function to manually fix remote video rendering
+    (window as any).fixRemoteVideo = () => {
+      console.log(`🚨 [REMOTE-FIX] Starting remote video render repair...`);
+      
+      const remoteVideos = document.querySelectorAll('[data-test-id^="remote-video-"]') as NodeListOf<HTMLVideoElement>;
+      console.log(`🚨 [REMOTE-FIX] Found ${remoteVideos.length} remote video elements`);
+      
+      remoteVideos.forEach((videoEl, index) => {
+        const participantId = videoEl.getAttribute('data-participant');
+        console.log(`🚨 [REMOTE-FIX] Processing video ${index + 1} for participant: ${participantId}`);
+        
+        // Check if video has stream
+        if (!videoEl.srcObject) {
+          console.log(`❌ [REMOTE-FIX] Video ${index + 1} has no srcObject - attempting to find track`);
+          
+          // Try to find the associated LiveKit track
+          if (room) {
+            const participants = Array.from(room.remoteParticipants.values());
+            const participant = participants.find(p => p.identity === participantId);
+            
+            if (participant) {
+              const videoTrack = Array.from(participant.videoTrackPublications.values())[0];
+              if (videoTrack && videoTrack.track) {
+                console.log(`🔧 [REMOTE-FIX] Found video track, re-attaching...`);
+                try {
+                  videoTrack.track.attach(videoEl);
+                  videoEl.play().catch(e => console.warn('Remote video play failed:', e));
+                  console.log(`✅ [REMOTE-FIX] Track re-attached for ${participantId}`);
+                } catch (attachError) {
+                  console.error(`❌ [REMOTE-FIX] Re-attach failed:`, attachError);
+                }
+              } else {
+                console.log(`❌ [REMOTE-FIX] No video track found for ${participantId}`);
+              }
+            } else {
+              console.log(`❌ [REMOTE-FIX] Participant ${participantId} not found`);
+            }
+          }
+        } else {
+          console.log(`✅ [REMOTE-FIX] Video ${index + 1} has srcObject - forcing play`);
+          videoEl.play().catch(e => console.warn('Remote video play failed:', e));
+        }
+      });
+      
+      // Force UI refresh
+      console.log(`🔄 [REMOTE-FIX] Forcing UI refresh...`);
+      if (videoRef.current) {
+        const currentContent = videoRef.current.innerHTML;
+        videoRef.current.innerHTML = '';
+        setTimeout(() => {
+          videoRef.current!.innerHTML = currentContent;
+        }, 100);
+      }
+    };
 
   const addMessage = (message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
@@ -825,7 +1351,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               room: {roomName}
             </span>
             <span style={{ color: '#60a5fa', fontSize: '14px' }}>
-              {participants.length + 1} participants
+              {room ? room.numParticipants : participants.length + 1} participants
             </span>
           </div>
           
@@ -877,12 +1403,24 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             ref={localVideoRef}
             autoPlay 
             muted 
+            playsInline
             style={{
               width: '100%',
               height: '100%',
               objectFit: 'cover',
               borderRadius: '8px',
-              backgroundColor: '#374151'
+              backgroundColor: 'black'
+            }}
+            onLoadedMetadata={() => {
+              console.log('🎥 [VIDEO] Local video metadata loaded - stream should be visible');
+            }}
+            onCanPlay={() => {
+              console.log('🎥 [VIDEO] Local video can play - stream is ready');
+            }}
+            onError={(e) => {
+              console.error('🎥 [VIDEO] Local video error:', e);
+              console.log('🎥 [VIDEO] Video element current src:', localVideoRef.current?.src);
+              console.log('🎥 [VIDEO] Video element srcObject:', localVideoRef.current?.srcObject);
             }}
           />
           <div style={{
@@ -967,7 +1505,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         {/* Meeting Attendees */}
         <div className="sidebar-section" style={{ borderBottom: '1px solid #374151', paddingBottom: '16px', marginBottom: '16px' }}>
           <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
-            Meeting Attendees ({participants.length + 1})
+            Meeting Attendees ({room ? room.numParticipants : participants.length + 1})
           </h3>
           
           {/* Current User */}
