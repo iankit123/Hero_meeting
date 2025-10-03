@@ -1342,63 +1342,208 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          padding: '16px 24px',
-          backgroundColor: '#1f2937',
-          borderBottom: '1px solid #374151'
+          padding: '20px 32px',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          borderBottom: '1px solid rgba(59, 130, 246, 0.1)',
+          backdropFilter: 'blur(10px)',
+          position: 'relative',
+          zIndex: 10
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{ color: 'white', fontSize: '18px', fontWeight: '600' }}>
-              room: {roomName}
-            </span>
-            <span style={{ color: '#60a5fa', fontSize: '14px' }}>
-              {room ? room.numParticipants : participants.length + 1} participants
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: '#22c55e',
+              borderRadius: '50%',
+              animation: 'pulse 2s infinite'
+            }}></div>
+            <div>
+              <span style={{ 
+                color: 'white', 
+                fontSize: '20px', 
+                fontWeight: '700',
+                letterSpacing: '-0.025em'
+              }}>
+                {roomName}
+              </span>
+              <div style={{ 
+                color: '#94a3b8', 
+                fontSize: '14px',
+                fontWeight: '500',
+                marginTop: '2px'
+              }}>
+                {room ? room.numParticipants : participants.length + 1} participant{room && room.numParticipants !== 1 ? 's' : ''}
+              </div>
+            </div>
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button onClick={leaveMeeting} className="btn btn-secondary" style={{ fontSize: '14px' }}>
+            <button 
+              onClick={leaveMeeting} 
+              style={{ 
+                fontSize: '14px',
+                fontWeight: '600',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                border: '1px solid rgba(220, 38, 38, 0.3)',
+                backgroundColor: 'rgba(220, 38, 38, 0.1)',
+                color: '#fca5a5',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                backdropFilter: 'blur(10px)'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.2)';
+                e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.5)';
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.1)';
+                e.currentTarget.style.borderColor = 'rgba(220, 38, 38, 0.3)';
+              }}
+            >
               Leave Meeting
             </button>
             <button 
               onClick={copyMeetingLink}
-              className="copy-link-btn"
+              style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                padding: '10px 20px',
+                borderRadius: '8px',
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+                backgroundColor: copied ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
+                color: copied ? '#86efac' : '#93c5fd',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                backdropFilter: 'blur(10px)'
+              }}
+              onMouseOver={(e) => {
+                if (!copied) {
+                  e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                }
+              }}
+              onMouseOut={(e) => {
+                if (!copied) {
+                  e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                  e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                }
+              }}
             >
-              {copied ? 'Copied!' : 'Copy Meeting Link'}
+              {copied ? '✓ Copied!' : 'Copy Meeting Link'}
             </button>
           </div>
         </div>
 
         {/* Main Video Content */}
-        <div className="waiting-message">
-          <div style={{ textAlign: 'center' }}>
+        <div style={{
+          position: 'relative',
+          height: '100%',
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden'
+        }}>
+          {/* Background Pattern */}
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundImage: `
+              radial-gradient(circle at 25% 25%, rgba(59, 130, 246, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at 75% 75%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 50%)
+            `,
+            opacity: 0.6
+          }}></div>
+          
+          <div style={{ 
+            textAlign: 'center',
+            position: 'relative',
+            zIndex: 2,
+            maxWidth: '400px',
+            padding: '40px'
+          }}>
             <div style={{
-              width: '100px',
-              height: '100px',
-              backgroundColor: '#0f172a',
+              width: '120px',
+              height: '120px',
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              margin: '0 auto 20px auto'
+              margin: '0 auto 32px auto',
+              border: '2px solid rgba(59, 130, 246, 0.3)',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
             }}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#3b82f6" 
-                viewBox="0 0 24 24" width="56" height="56" strokeWidth="1.5">
-                <path strokeLinecap="round" strokeLinejoin="round" 
-                  d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m4-6a4 4 0 11-8 0 4 4 0 018 0zm6 4a4 4 0 100-8 4 4 0 000 8z" />
+              <svg fill="#60a5fa" version="1.1" xmlns="http://www.w3.org/2000/svg" 
+                width="64" height="64" viewBox="0 0 612 612" xmlSpace="preserve">
+                <g>
+                  <path d="M306,317.657c46.677,0,84.514-37.838,84.514-84.514S352.677,148.629,306,148.629c-46.676,0-84.514,37.838-84.514,84.514
+                    S259.324,317.657,306,317.657z M350.041,262.785c-4.179,13.816-22.078,24.202-43.529,24.202c-21.453,0-39.352-10.386-43.53-24.202
+                    H350.041z M448.225,405.086v27.858c0,4.129-2.752,8.928-6.524,10.606c-14.62,6.506-54.354,19.82-135.844,19.82
+                    c-81.489,0-121.008-13.315-135.628-19.82c-3.773-1.679-6.453-6.478-6.453-10.606v-27.858c0-41.747,31.497-76.379,72.054-81.018
+                    c1.232-0.141,2.917,0.387,3.921,1.115c18.7,13.537,41.522,21.617,66.322,21.617c24.799,0,47.657-8.08,66.356-21.617
+                    c1.005-0.728,2.526-1.255,3.759-1.115C416.746,328.707,448.225,363.339,448.225,405.086z M612,329.552v16.487
+                    c0,2.443-1.799,5.284-4.031,6.277c-8.653,3.851-32.255,11.731-80.482,11.731c-48.229,0-73.514-7.881-82.166-11.731
+                    c-2.233-0.992-5.715-3.833-5.715-6.277v-16.487c0-24.707,20.494-45.204,44.498-47.949c0.729-0.083,2.652,0.229,3.247,0.66
+                    c11.067,8.012,25.038,12.794,39.715,12.794c14.678,0,28.438-4.782,39.505-12.794c0.596-0.431,1.782-0.742,2.511-0.66
+                    C593.083,284.349,612,304.845,612,329.552z M166.68,352.317c-8.653,3.851-33.095,11.73-81.324,11.73
+                    c-48.229,0-72.25-7.88-80.903-11.73C2.219,351.324,0,348.483,0,346.04v-16.487c0-24.707,18.812-45.204,42.815-47.949
+                    c0.729-0.083,1.811,0.229,2.405,0.659c11.067,8.013,24.617,12.795,39.293,12.795c14.677,0,28.227-4.782,39.294-12.795
+                    c0.594-0.431,3.358-0.742,4.088-0.659c24.003,2.746,44.498,23.242,44.498,47.949v16.487
+                    C172.395,348.483,168.913,351.324,166.68,352.317z M84.514,177.771c-27.624,0-50.019,22.394-50.019,50.019
+                    c0,27.625,22.394,50.019,50.019,50.019s50.019-22.394,50.019-50.019S112.139,177.771,84.514,177.771z M84.514,258.22
+                    c-12.956,0-23.766-6.272-26.29-14.617h52.581C108.281,251.948,97.471,258.22,84.514,258.22z M527.486,177.771
+                    c-27.625,0-50.02,22.394-50.02,50.019c0,27.625,22.395,50.019,50.02,50.019c27.624,0,50.019-22.394,50.019-50.019
+                    S555.11,177.771,527.486,177.771z M527.485,258.22c-12.956,0-23.767-6.272-26.29-14.617h52.58
+                    C551.252,251.948,540.441,258.22,527.485,258.22z"/>
+                </g>
               </svg>
             </div>
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: 'white', marginBottom: '6px' }}>
+            <h2 style={{ 
+              fontSize: '28px', 
+              fontWeight: '700', 
+              color: 'white', 
+              marginBottom: '12px',
+              letterSpacing: '-0.025em',
+              background: 'linear-gradient(135deg, #ffffff 0%, #94a3b8 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text'
+            }}>
               Waiting for others to join...
             </h2>
-            <p style={{ fontSize: '14px', color: '#9ca3af' }}>
-              Your meeting room is ready
+            <p style={{ 
+              fontSize: '16px', 
+              color: '#94a3b8',
+              fontWeight: '500',
+              lineHeight: '1.5'
+            }}>
+              Your meeting room is ready and secure
             </p>
           </div>
         </div>
 
 
         {/* Video Preview - User's own camera */}
-        <div className="video-preview">
+        <div style={{
+          position: 'absolute',
+          bottom: '120px',
+          right: '24px',
+          width: '240px',
+          height: '180px',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '2px solid rgba(59, 130, 246, 0.3)',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
+          backdropFilter: 'blur(10px)',
+          zIndex: 5
+        }}>
           <video 
             ref={localVideoRef}
             autoPlay 
@@ -1408,7 +1553,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              borderRadius: '8px',
               backgroundColor: 'black'
             }}
             onLoadedMetadata={() => {
@@ -1425,16 +1569,40 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           />
           <div style={{
             position: 'absolute',
-            bottom: '8px',
-            left: '8px',
-            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+            bottom: '12px',
+            left: '12px',
+            background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.6) 100%)',
             color: 'white',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            fontSize: '12px',
-            fontWeight: '600'
+            padding: '6px 12px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: '600',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
             You
+          </div>
+          <div style={{
+            position: 'absolute',
+            top: '12px',
+            right: '12px',
+            display: 'flex',
+            gap: '6px'
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: isVideoEnabled ? '#22c55e' : '#ef4444',
+              borderRadius: '50%',
+              border: '2px solid rgba(0, 0, 0, 0.3)'
+            }}></div>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: isAudioEnabled ? '#22c55e' : '#ef4444',
+              borderRadius: '50%',
+              border: '2px solid rgba(0, 0, 0, 0.3)'
+            }}></div>
           </div>
         </div>
         
@@ -1453,12 +1621,45 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         </div>
 
         {/* Controls */}
-        <div className="controls">
+        <div style={{
+          position: 'absolute',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '16px',
+          padding: '16px 24px',
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)',
+          borderRadius: '20px',
+          border: '1px solid rgba(59, 130, 246, 0.2)',
+          backdropFilter: 'blur(20px)',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
+          zIndex: 10
+        }}>
           <button 
             onClick={toggleAudio} 
-            className={`control-btn ${!isAudioEnabled ? 'muted' : ''}`}
             style={{
-              backgroundColor: !isAudioEnabled ? '#dc2626' : '#374151'
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              background: !isAudioEnabled 
+                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                : 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+              border: `2px solid ${!isAudioEnabled ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
             }}
           >
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1472,9 +1673,27 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           
           <button 
             onClick={toggleVideo} 
-            className={`control-btn ${!isVideoEnabled ? 'muted' : ''}`}
             style={{
-              backgroundColor: !isVideoEnabled ? '#dc2626' : '#374151'
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              background: !isVideoEnabled 
+                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                : 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+              border: `2px solid ${!isVideoEnabled ? 'rgba(239, 68, 68, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
             }}
           >
             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1486,58 +1705,186 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </svg>
           </button>
           
-          <button className="control-btn">
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button style={{
+            width: '48px',
+            height: '48px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+              border: '2px solid rgba(59, 130, 246, 0.3)'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
+          }}>
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
             </svg>
           </button>
           
-          <button onClick={leaveMeeting} className="control-btn" style={{ backgroundColor: '#dc2626' }}>
-            <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728" />
+          <button 
+            onClick={leaveMeeting} 
+            style={{
+              width: '56px',
+              height: '56px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.3s ease',
+              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+              border: '2px solid rgba(239, 68, 68, 0.3)'
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
+            }}
+          >
+            <svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" 
+              width="24" height="24" viewBox="0 0 52 52">
+              <path d="M48.5,5.6l-2.1-2.1C45.8,2.9,44.7,3,44,3.8L20.5,27.3l-5-5.6c-0.6-0.6-0.6-1.4-0.2-2.1l3.8-5.2
+                c1.1-1.4,1-3.4-0.1-4.8l-4.9-6.1c-1.5-1.8-4.2-2-5.9-0.3L3,8.4c-0.8,0.8-1.2,1.9-1.2,3c0.5,9.2,4.2,18,10,24.6l-8,8
+                c-0.7,0.7-0.8,1.8-0.3,2.4l2.1,2.1C6.2,49.1,7.3,49,8,48.2L48.2,8C49,7.3,49.1,6.2,48.5,5.6z"/>
+              <path d="M48.5,37.9L42.4,33c-1.4-1.1-3.4-1.2-4.8-0.1l-5.2,3.8c-0.6,0.5-1.5,0.4-2.1-0.2l-2.4-2.2l-8.5,8.5
+                c6.1,4.1,13.4,6.8,21,7.2c1.1,0.1,2.2-0.4,3-1.2l5.2-5.2C50.5,42.1,50.4,39.3,48.5,37.9z"/>
             </svg>
           </button>
         </div>
       </div>
 
       {/* Sidebar */}
-      <div className="sidebar">
+      <div style={{
+        width: '320px',
+        height: '100vh',
+        background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
+        borderLeft: '1px solid rgba(59, 130, 246, 0.1)',
+        padding: '24px',
+        overflowY: 'auto',
+        backdropFilter: 'blur(10px)'
+      }}>
         {/* Meeting Attendees */}
-        <div className="sidebar-section" style={{ borderBottom: '1px solid #374151', paddingBottom: '16px', marginBottom: '16px' }}>
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
-            Meeting Attendees ({room ? room.numParticipants : participants.length + 1})
-          </h3>
+        <div style={{ 
+          borderBottom: '1px solid rgba(59, 130, 246, 0.1)', 
+          paddingBottom: '24px', 
+          marginBottom: '24px' 
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            marginBottom: '20px' 
+          }}>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              backgroundColor: '#22c55e',
+              borderRadius: '50%',
+              animation: 'pulse 2s infinite'
+            }}></div>
+            <h3 style={{ 
+              color: 'white', 
+              fontSize: '18px', 
+              fontWeight: '700', 
+              margin: '0',
+              letterSpacing: '-0.025em'
+            }}>
+              Meeting Attendees
+            </h3>
+            <div style={{
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              color: '#60a5fa',
+              padding: '4px 8px',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: '600'
+            }}>
+              {room ? room.numParticipants : participants.length + 1}
+            </div>
+          </div>
           
           {/* Current User */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '12px',
-            padding: '8px',
-            backgroundColor: '#374151',
-            borderRadius: '8px',
-            marginBottom: '8px'
+            gap: '16px',
+            padding: '16px',
+            background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)',
+            borderRadius: '12px',
+            marginBottom: '12px',
+            border: '1px solid rgba(34, 197, 94, 0.2)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.2s ease'
           }}>
             <div style={{
-              width: '32px',
-              height: '32px',
-              backgroundColor: '#22c55e',
+              width: '40px',
+              height: '40px',
+              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '14px',
-              fontWeight: '600',
-              color: 'white'
+              fontSize: '16px',
+              fontWeight: '700',
+              color: 'white',
+              boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)'
             }}>
               Y
             </div>
-            <div>
-              <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                color: 'white', 
+                fontSize: '15px', 
+                fontWeight: '600',
+                marginBottom: '4px'
+              }}>
                 You (Host)
               </div>
-              <div style={{ color: '#9ca3af', fontSize: '12px' }}>
-                {isVideoEnabled ? '📹' : '📹🚫'} {isAudioEnabled ? '🎤' : '🎤🚫'}
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                fontSize: '12px',
+                color: '#94a3b8'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <div style={{
+                    width: '6px',
+                    height: '6px',
+                    backgroundColor: isVideoEnabled ? '#22c55e' : '#ef4444',
+                    borderRadius: '50%'
+                  }}></div>
+                  Video
+                </div>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <div style={{
+                    width: '6px',
+                    height: '6px',
+                    backgroundColor: isAudioEnabled ? '#22c55e' : '#ef4444',
+                    borderRadius: '50%'
+                  }}></div>
+                  Audio
+                </div>
               </div>
             </div>
           </div>
@@ -1547,32 +1894,53 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             <div key={participant.identity} style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '12px',
-              padding: '8px',
-              backgroundColor: '#374151',
-              borderRadius: '8px',
-              marginBottom: '8px'
+              gap: '16px',
+              padding: '16px',
+              background: participant.identity === 'hero-bot' 
+                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%)'
+                : 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%)',
+              borderRadius: '12px',
+              marginBottom: '12px',
+              border: participant.identity === 'hero-bot' 
+                ? '1px solid rgba(59, 130, 246, 0.2)'
+                : '1px solid rgba(245, 158, 11, 0.2)',
+              backdropFilter: 'blur(10px)',
+              transition: 'all 0.2s ease'
             }}>
               <div style={{
-                width: '32px',
-                height: '32px',
-                backgroundColor: participant.identity === 'hero-bot' ? '#2563eb' : '#f59e0b',
+                width: '40px',
+                height: '40px',
+                background: participant.identity === 'hero-bot' 
+                  ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '14px',
-                fontWeight: '600',
-                color: 'white'
+                fontSize: '16px',
+                fontWeight: '700',
+                color: 'white',
+                boxShadow: participant.identity === 'hero-bot' 
+                  ? '0 4px 12px rgba(59, 130, 246, 0.3)'
+                  : '0 4px 12px rgba(245, 158, 11, 0.3)'
               }}>
                 {participant.identity === 'hero-bot' ? '🤖' : participant.identity.charAt(0).toUpperCase()}
               </div>
-              <div>
-                <div style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ 
+                  color: 'white', 
+                  fontSize: '15px', 
+                  fontWeight: '600',
+                  marginBottom: '4px'
+                }}>
                   {participant.identity === 'hero-bot' ? 'Hero AI Assistant' : `Participant ${index + 1}`}
                 </div>
-                <div style={{ color: '#9ca3af', fontSize: '12px' }}>
-                  {participant.identity === 'hero-bot' ? '🤖 AI' : 'Online'}
+                <div style={{ 
+                  color: '#94a3b8', 
+                  fontSize: '12px',
+                  fontWeight: '500'
+                }}>
+                  {participant.identity === 'hero-bot' ? 'AI Assistant' : 'Online'}
                 </div>
               </div>
             </div>
@@ -1751,11 +2119,56 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       {/* Hidden audio element */}
       <audio ref={audioRef} autoPlay />
       
-      {/* CSS Animation */}
+      {/* CSS Animations */}
       <style jsx>{`
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
+        }
+        
+        @keyframes pulse {
+          0%, 100% { 
+            opacity: 1; 
+            transform: scale(1);
+          }
+          50% { 
+            opacity: 0.5; 
+            transform: scale(1.1);
+          }
+        }
+        
+        @keyframes fadeIn {
+          from { 
+            opacity: 0; 
+            transform: translateY(20px); 
+          }
+          to { 
+            opacity: 1; 
+            transform: translateY(0); 
+          }
+        }
+        
+        @keyframes slideIn {
+          from { 
+            opacity: 0; 
+            transform: translateX(-20px); 
+          }
+          to { 
+            opacity: 1; 
+            transform: translateX(0); 
+          }
+        }
+        
+        .meeting-container {
+          animation: fadeIn 0.6s ease-out;
+        }
+        
+        .video-area {
+          animation: slideIn 0.8s ease-out;
+        }
+        
+        .sidebar {
+          animation: slideIn 1s ease-out;
         }
       `}</style>
     </div>
