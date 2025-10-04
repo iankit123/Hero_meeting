@@ -47,7 +47,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         sttServiceRef.current.stopTranscription();
       }
     };
-  }, [roomName, sttProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize audio context on first user interaction
   useEffect(() => {
@@ -748,7 +748,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         console.log(`🚨 [EMERGENCY-FIX] Got fresh media stream:`, mediaStream);
         
         // Attach to video element
-        if (localVideoRef.current) {
+      if (localVideoRef.current) {
           localVideoRef.current.srcObject = mediaStream;
           await localVideoRef.current.play();
           console.log(`✅ [EMERGENCY-FIX] Emergency stream attached and playing!`);
@@ -759,8 +759,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           const newVideoTrack = await room.localParticipant.setCameraEnabled(true);
           console.log(`🚨 [EMERGENCY-FIX] Republished video track to LiveKit`);
         }
-        
-      } catch (error) {
+      
+    } catch (error) {
         console.error(`❌ [EMERGENCY-FIX] Emergency fix failed:`, error);
       }
     };
@@ -925,14 +925,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Set up transcript callback
       sttServiceRef.current.onTranscript((result: STTResult) => {
         console.log('🎤 [STT] Transcript received:', result.text);
-        
-        addTranscript({
-          id: Date.now().toString(),
+          
+          addTranscript({
+            id: Date.now().toString(),
           text: result.text,
           speaker: result.speaker || 'user',
           timestamp: result.timestamp,
-          isTranscript: true
-        });
+            isTranscript: true
+          });
 
         // Store all speech in context (not just Hero-triggered messages)
         storeSpeechInContext(result.text);
@@ -947,7 +947,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           console.log('📝 [TRIGGER] Full message:', result.text);
           
           handleHeroTrigger(result.text);
-        } else {
+          } else {
           console.log('❌ [TRIGGER] No Hero/Hiro trigger found in transcript');
         }
       });
@@ -955,15 +955,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Start transcription
       await sttServiceRef.current.startTranscription();
       
-      addTranscript({
-        id: Date.now().toString(),
+          addTranscript({
+            id: Date.now().toString(),
         text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
-        speaker: 'system',
-        timestamp: Date.now(),
-        isTranscript: true
-      });
+            speaker: 'system',
+            timestamp: Date.now(),
+            isTranscript: true
+          });
       
-    } catch (error) {
+            } catch (error) {
       console.error('❌ [STT] Error starting transcription:', error);
       addTranscript({
         id: Date.now().toString(),
@@ -1026,12 +1026,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
           console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
           console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
+          console.log('🎵 [FRONTEND] Room state:', room.state);
+          console.log('🎵 [FRONTEND] Room participants:', room.numParticipants);
           
           try {
             // Initialize audio context if not already done
             if (!audioContextRef.current) {
               audioContextRef.current = new AudioContext();
-              console.log('🎵 [FRONTEND] Creating audio context...');
+            console.log('🎵 [FRONTEND] Creating audio context...');
             }
             
             // Resume audio context if suspended (required for user interaction)
@@ -1061,6 +1063,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             
             if (audioTrack) {
               console.log('🎵 [FRONTEND] Creating LiveKit audio track from TTS...');
+              console.log('🎵 [FRONTEND] Audio track details:', {
+                id: audioTrack.id,
+                label: audioTrack.label,
+                enabled: audioTrack.enabled,
+                muted: audioTrack.muted,
+                readyState: audioTrack.readyState
+              });
               
               // Publish audio track to LiveKit so all participants can hear
               const publication = await room.localParticipant.publishTrack(audioTrack, {
@@ -1069,9 +1078,22 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               });
               
               console.log('✅ [FRONTEND] Hero TTS audio published to LiveKit!');
+              console.log('✅ [FRONTEND] Publication details:', {
+                trackSid: publication.trackSid,
+                trackName: publication.trackName,
+                source: publication.source,
+                subscribed: publication.isSubscribed
+              });
+              
+              // Force enable the track to ensure it's available to all participants
+              audioTrack.enabled = true;
+              console.log('✅ [FRONTEND] Audio track enabled for broadcasting');
+              
+              // Notify all participants about the Hero audio
+              console.log('📢 [FRONTEND] Broadcasting Hero audio to', room.numParticipants, 'participants');
               
               // Start playback
-              source.start();
+            source.start();
               console.log('✅ [FRONTEND] Audio playback started and broadcasting!');
               
               // Clean up after playback
@@ -1108,7 +1130,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           }
         } else {
           if (!data.audioBuffer) {
-            console.log('⚠️ [FRONTEND] No audio buffer provided in response');
+          console.log('⚠️ [FRONTEND] No audio buffer provided in response');
           }
           if (!room) {
             console.log('⚠️ [FRONTEND] Room not available for broadcasting');
