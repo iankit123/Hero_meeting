@@ -18,6 +18,7 @@ export class WebSpeechSTTService implements STTService {
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private speechTimeout: NodeJS.Timeout | null = null;
   private lastSpeechTime = Date.now();
+  private isStopping = false; // Flag to prevent restart loops
 
   constructor() {
     // Check if browser supports speech recognition
@@ -112,6 +113,10 @@ export class WebSpeechSTTService implements STTService {
     this.recognition.onerror = (event: any) => {
       console.error('❌ [WEBSPEECH] Recognition error:', event.error);
       if (event.error === 'aborted') {
+        if (this.isStopping) {
+          console.log('✅ [WEBSPEECH] Recognition aborted during intentional stop - not restarting');
+          return; // Don't restart if we're intentionally stopping
+        }
         console.log('⚠️ [WEBSPEECH] Recognition aborted - this is normal, will restart automatically');
       } else if (event.error === 'network') {
         console.warn('🌐 [WEBSPEECH] Network error in speech recognition - connection issues');
@@ -128,6 +133,12 @@ export class WebSpeechSTTService implements STTService {
       console.log('🔴 [WEBSPEECH] Recognition ended - preparing to restart');
       this.isListening = false;
       
+      // Don't restart if we're intentionally stopping
+      if (this.isStopping) {
+        console.log('✅ [WEBSPEECH] Recognition ended during intentional stop - not restarting');
+        return;
+      }
+      
       // Clear keepalive interval
       if (this.keepAliveInterval) {
         clearInterval(this.keepAliveInterval);
@@ -143,7 +154,7 @@ export class WebSpeechSTTService implements STTService {
       // Restart recognition
       setTimeout(() => {
         try {
-          if (!this.isListening) {
+          if (!this.isListening && !this.isStopping) {
             console.log('🔄 [WEBSPEECH] Restarting speech recognition...');
             this.lastSpeechTime = Date.now();
             this.recognition.start();
@@ -152,7 +163,7 @@ export class WebSpeechSTTService implements STTService {
           console.warn('⚠️ [WEBSPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
           // Retry after a longer delay
           setTimeout(() => {
-            if (!this.isListening) {
+            if (!this.isListening && !this.isStopping) {
               try {
                 console.log('🔄 [WEBSPEECH] Retry restarting speech recognition...');
                 this.lastSpeechTime = Date.now();
@@ -170,6 +181,7 @@ export class WebSpeechSTTService implements STTService {
   async startTranscription(audioStream?: MediaStream): Promise<void> {
     try {
       console.log('🎤 [WEBSPEECH] Starting Web Speech API transcription...');
+      this.isStopping = false; // Reset stopping flag when starting
       this.recognition.start();
     } catch (error) {
       console.error('❌ [WEBSPEECH] Error starting transcription:', error);
@@ -180,6 +192,7 @@ export class WebSpeechSTTService implements STTService {
   stopTranscription(): void {
     console.log('🛑 [WEBSPEECH] Stopping Web Speech API transcription...');
     this.isListening = false;
+    this.isStopping = true; // Set flag to prevent restart loops
     
     if (this.keepAliveInterval) {
       clearInterval(this.keepAliveInterval);
@@ -192,10 +205,16 @@ export class WebSpeechSTTService implements STTService {
     }
     
     try {
+      // More aggressive stopping
       this.recognition.stop();
+      this.recognition.abort(); // Force abort any ongoing recognition
+      console.log('✅ [WEBSPEECH] Recognition stopped and aborted');
     } catch (error) {
       console.warn('⚠️ [WEBSPEECH] Error stopping recognition:', error);
     }
+    
+    // Clear any pending callbacks
+    this.transcriptCallback = undefined;
   }
 
   onTranscript(callback: (result: STTResult) => void): void {
@@ -422,6 +441,11 @@ export class DeepgramSTTService implements STTService {
     }
     
     this.isConnected = false;
+    
+    // Clear any pending callbacks
+    this.transcriptCallback = undefined;
+    
+    console.log('✅ [DEEPGRAM] Deepgram transcription stopped and cleaned up');
   }
 
   onTranscript(callback: (result: STTResult) => void): void {

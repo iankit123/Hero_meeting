@@ -28,6 +28,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const sttServiceRef = useRef<STTService | null>(null);
+  const messageIdCounter = useRef<number>(0);
 
   useEffect(() => {
     // Initialize STT service
@@ -309,6 +310,26 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const setupRoomEventListeners = (newRoom: Room) => {
     console.log('🎧 [EVENTS] Setting up room event listeners...');
     
+    // Set up data channel for Hero message broadcasting
+    newRoom.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
+      try {
+        const data = JSON.parse(new TextDecoder().decode(payload));
+        console.log('📨 [DATA] Received data from', participant?.identity || 'unknown:', data);
+        
+        if (data.type === 'hero_message') {
+          console.log('🤖 [HERO] Broadcasting Hero message to all participants');
+          addMessage({
+            id: data.messageId,
+            text: data.text,
+            timestamp: data.timestamp,
+            isHero: true
+          });
+        }
+      } catch (error) {
+        console.warn('⚠️ [DATA] Failed to parse received data:', error);
+      }
+    });
+    
     newRoom.on(RoomEvent.Connected, () => {
       console.log('✅ [CONNECT] Connected to room:', newRoom.name);
       console.log('👀 [CONNECT] Local participant:', newRoom.localParticipant.identity);
@@ -353,7 +374,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         // Add welcome message for Hero bot
         if (participant.identity === 'hero-bot') {
           addMessage({
-            id: Date.now().toString(),
+            id: generateMessageId(),
           text: 'Hero AI assistant has joined the meeting! Say &quot;Hey Hero&quot; to ask questions.',
             isHero: true,
             timestamp: Date.now(),
@@ -875,6 +896,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
 
+  // Generate unique message ID
+  const generateMessageId = (): string => {
+    messageIdCounter.current += 1;
+    return `${Date.now()}-${messageIdCounter.current}-${Math.random().toString(36).substr(2, 9)}`;
+  };
+
   const addMessage = (message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
   };
@@ -904,6 +931,29 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.warn('⚠️ [CONTEXT] Failed to store speech in context:', error);
     }
   };
+
+  // Broadcast Hero message to all participants via LiveKit data channel
+  const broadcastHeroMessage = async (text: string, messageId: string) => {
+    if (!room) {
+      console.warn('⚠️ [BROADCAST] No room available for broadcasting');
+      return;
+    }
+
+    try {
+      const messageData = {
+        type: 'hero_message',
+        text: text,
+        messageId: messageId,
+        timestamp: Date.now()
+      };
+
+      const payload = new TextEncoder().encode(JSON.stringify(messageData));
+      await room.localParticipant.publishData(payload, { reliable: true });
+      console.log('📤 [BROADCAST] Hero message broadcasted to all participants:', text);
+    } catch (error) {
+      console.error('❌ [BROADCAST] Failed to broadcast Hero message:', error);
+    }
+  };
   
   
   const startTranscription = async (room: Room) => {
@@ -911,7 +961,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       if (!sttServiceRef.current) {
         console.error('❌ [STT] STT service not initialized');
         addTranscript({
-          id: Date.now().toString(),
+          id: generateMessageId(),
           text: '❌ Speech recognition service not available. Please refresh the page.',
           speaker: 'system',
           timestamp: Date.now(),
@@ -927,7 +977,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         console.log('🎤 [STT] Transcript received:', result.text);
           
           addTranscript({
-            id: Date.now().toString(),
+            id: generateMessageId(),
           text: result.text,
           speaker: result.speaker || 'user',
           timestamp: result.timestamp,
@@ -956,7 +1006,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       await sttServiceRef.current.startTranscription();
       
           addTranscript({
-            id: Date.now().toString(),
+            id: generateMessageId(),
         text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
             speaker: 'system',
             timestamp: Date.now(),
@@ -966,7 +1016,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             } catch (error) {
       console.error('❌ [STT] Error starting transcription:', error);
       addTranscript({
-        id: Date.now().toString(),
+        id: generateMessageId(),
         text: '❌ Failed to start speech recognition. Please refresh the page and try again.',
         speaker: 'system',
         timestamp: Date.now(),
@@ -1014,20 +1064,51 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
         console.log('🧼 [FRONTEND] Cleaned response text:', cleanResponse);
         
+        const messageId = generateMessageId();
+        
+        // Add Hero AI response to chat locally
         addMessage({
-          id: Date.now().toString(),
+          id: messageId,
           text: cleanResponse,
           timestamp: Date.now(),
           isHero: true
         });
+
+        // Broadcast Hero message to all participants
+        await broadcastHeroMessage(cleanResponse, messageId);
         
         // Play TTS audio if available - broadcast to all participants
-        if (data.audioBuffer && room) {
-          console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
-          console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
-          console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
-          console.log('🎵 [FRONTEND] Room state:', room.state);
-          console.log('🎵 [FRONTEND] Room participants:', room.numParticipants);
+        if (data.audioBuffer) {
+          if (!room) {
+            console.warn('❌ [FRONTEND] Room not available for broadcasting');
+            // Fallback to local playback only
+            try {
+              // Initialize audio context if not already done
+              if (!audioContextRef.current) {
+                audioContextRef.current = new AudioContext();
+              }
+              
+              // Resume audio context if suspended (required for user interaction)
+              if (audioContextRef.current.state === 'suspended') {
+                await audioContextRef.current.resume();
+              }
+              
+              const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
+              const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+              const source = audioContextRef.current.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(audioContextRef.current.destination);
+              source.start();
+              console.log('✅ [FRONTEND] Hero audio played locally (no room for broadcasting)');
+            } catch (audioError) {
+              console.warn('❌ [FRONTEND] Local audio playback failed:', audioError);
+            }
+          } else {
+            console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
+            console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
+            console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
+            console.log('🎵 [FRONTEND] Room state:', room.state);
+            console.log('🎵 [FRONTEND] Room participants:', room.numParticipants);
           
           try {
             // Initialize audio context if not already done
@@ -1128,19 +1209,17 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               console.warn('❌ [FRONTEND] Fallback audio playback also failed:', fallbackError);
             }
           }
+          }
         } else {
           if (!data.audioBuffer) {
-          console.log('⚠️ [FRONTEND] No audio buffer provided in response');
-          }
-          if (!room) {
-            console.log('⚠️ [FRONTEND] Room not available for broadcasting');
+            console.log('⚠️ [FRONTEND] No audio buffer provided in response');
           }
         }
       } else if (data.success && data.message) {
         console.log('💬 [FRONTEND] Debug message from API:', data.message);
         // Show debug message in transcript
         addTranscript({
-          id: Date.now().toString(),
+          id: generateMessageId(),
           text: `🤖 Hero debug: ${data.message}`,
           speaker: 'system',
           timestamp: Date.now(),
@@ -1160,7 +1239,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       
       // Add error message to chat
       addMessage({
-        id: Date.now().toString(),
+        id: generateMessageId(),
         text: `❌ Sorry, Hero encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         timestamp: Date.now(),
         isHero: true
@@ -1173,7 +1252,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
     // Add user message to chat
     addMessage({
-      id: Date.now().toString(),
+      id: generateMessageId(),
       text: message,
       timestamp: Date.now(),
     });
@@ -1198,16 +1277,50 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         // Strip markdown formatting from response
         const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
         
-        // Add Hero AI response to chat
+        const messageId = generateMessageId();
+        
+        // Add Hero AI response to chat locally
         addMessage({
-          id: Date.now().toString(),
+          id: messageId,
           text: cleanResponse,
           timestamp: Date.now(),
           isHero: true
         });
 
-        // Play TTS audio if available
+        // Broadcast Hero message to all participants
+        await broadcastHeroMessage(cleanResponse, messageId);
+
+        // Play TTS audio if available - broadcast to all participants
         if (data.audioBuffer) {
+          if (!room) {
+            console.warn('❌ [CHAT-AUDIO] Room not available for broadcasting');
+            // Fallback to local playback only
+            try {
+              // Initialize audio context if not already done
+              if (!audioContextRef.current) {
+                audioContextRef.current = new AudioContext();
+              }
+              
+              // Resume audio context if suspended (required for user interaction)
+              if (audioContextRef.current.state === 'suspended') {
+                await audioContextRef.current.resume();
+              }
+              
+              const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
+              const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+              const source = audioContextRef.current.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(audioContextRef.current.destination);
+              source.start();
+              console.log('✅ [CHAT-AUDIO] Hero audio played locally (no room for broadcasting)');
+            } catch (audioError) {
+              console.warn('❌ [CHAT-AUDIO] Local audio playback failed:', audioError);
+            }
+          } else {
+            console.log('🎵 [CHAT-AUDIO] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
+            console.log('🎵 [CHAT-AUDIO] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
+            console.log('🎵 [CHAT-AUDIO] Audio duration:', data.duration, 'seconds');
+          
           try {
             // Initialize audio context if not already done
             if (!audioContextRef.current) {
@@ -1221,10 +1334,56 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             
             const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
             const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+            
+            // Create a MediaStreamDestination to capture the audio
+            const destination = audioContextRef.current.createMediaStreamDestination();
             const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContextRef.current.destination);
-            source.start();
+            source.connect(destination);
+            source.connect(audioContextRef.current.destination); // Also play locally
+            
+            // Get audio track from the MediaStream
+            const audioTrack = destination.stream.getAudioTracks()[0];
+            
+            if (audioTrack) {
+              console.log('🎵 [CHAT-AUDIO] Creating LiveKit audio track from TTS...');
+              
+              // Publish audio track to LiveKit so all participants can hear
+              const publication = await room.localParticipant.publishTrack(audioTrack, {
+                name: 'hero-tts-audio',
+                source: 'microphone' as any, // Use microphone source for compatibility
+              });
+              
+              console.log('✅ [CHAT-AUDIO] Hero TTS audio published to LiveKit!');
+              console.log('✅ [CHAT-AUDIO] Publication details:', {
+                trackSid: publication.trackSid,
+                trackName: publication.trackName,
+                source: publication.source,
+                subscribed: publication.isSubscribed
+              });
+              
+              // Force enable the track to ensure it's available to all participants
+              audioTrack.enabled = true;
+              console.log('✅ [CHAT-AUDIO] Audio track enabled for broadcasting');
+              
+              // Notify all participants about the Hero audio
+              console.log('📢 [CHAT-AUDIO] Broadcasting Hero audio to', room.numParticipants, 'participants');
+              
+              // Start playback
+              source.start();
+              console.log('✅ [CHAT-AUDIO] Audio playback started and broadcasting!');
+              
+              // Clean up after playback
+              source.onended = () => {
+                console.log('🧹 [CHAT-AUDIO] Cleaning up Hero audio track...');
+                room.localParticipant.unpublishTrack(audioTrack);
+                console.log('✅ [CHAT-AUDIO] Hero audio track unpublished');
+              };
+            } else {
+              console.warn('⚠️ [CHAT-AUDIO] No audio track found in MediaStream');
+              // Fallback to local playback only
+              source.start();
+            }
           } catch (audioError) {
             console.warn('Error playing TTS audio:', audioError);
             // Fallback: try using HTML5 audio element
@@ -1239,11 +1398,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               console.warn('Fallback audio playback also failed:', fallbackError);
             }
           }
+          }
         }
       } else if (data.success && data.message) {
         // Show debug message for chat
         addMessage({
-          id: Date.now().toString(),
+          id: generateMessageId(),
           text: `Debug: ${data.message}`,
           timestamp: Date.now(),
           isHero: true
@@ -1291,40 +1451,71 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram') => {
     try {
-      // Stop current STT service
+      console.log('🔄 [STT] === SWITCHING STT PROVIDER ===');
+      
+      // Stop current STT service more aggressively
       if (sttServiceRef.current) {
+        console.log('🛑 [STT] Stopping current STT service...');
         await sttServiceRef.current.stopTranscription();
-        console.log('🛑 [STT] Stopped current STT service');
+        
+        // Additional cleanup for WebSpeech
+        if (sttProvider === 'webspeech') {
+          console.log('🧹 [STT] Additional WebSpeech cleanup...');
+          // Force stop any remaining recognition instances
+          if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+            if (SpeechRecognition) {
+              try {
+                const tempRecognition = new SpeechRecognition();
+                tempRecognition.stop();
+              } catch (e) {
+                console.log('🧹 [STT] WebSpeech cleanup completed');
+              }
+            }
+          }
+        }
+        
+        console.log('✅ [STT] Current STT service stopped');
+        
+        // Wait a bit to ensure complete cleanup
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Switch provider (use parameter or toggle)
       const targetProvider = newProvider || (sttProvider === 'webspeech' ? 'deepgram' : 'webspeech');
+      console.log(`🔄 [STT] Switching from ${sttProvider} to ${targetProvider}`);
+      
       setSttProvider(targetProvider);
+      
+      // Wait for state update
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Create new STT service
       sttServiceRef.current = createSTTService(targetProvider);
-      console.log(`🔄 [STT] Switched to provider: ${targetProvider}`);
+      console.log(`✅ [STT] Created new ${targetProvider} service`);
 
       // Restart transcription if room is connected
       if (room && room.state === 'connected') {
+        console.log(`🎤 [STT] Restarting transcription with ${targetProvider}...`);
         await startTranscription(room);
-        console.log(`🎤 [STT] Restarted transcription with ${targetProvider}`);
+        console.log(`✅ [STT] Transcription restarted with ${targetProvider}`);
       }
 
       // Add notification to transcript
       addTranscript({
-        id: Date.now().toString(),
+        id: generateMessageId(),
         text: `🎤 Switched to ${targetProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
       });
-
+      
+      console.log('✅ [STT] === PROVIDER SWITCH COMPLETE ===');
     } catch (error) {
       console.error('❌ [STT] Error switching STT provider:', error);
       addTranscript({
-        id: Date.now().toString(),
-        text: `❌ Failed to switch STT provider: ${error}`,
+        id: generateMessageId(),
+        text: `❌ Failed to switch STT provider: ${error instanceof Error ? error.message : 'Unknown error'}`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
