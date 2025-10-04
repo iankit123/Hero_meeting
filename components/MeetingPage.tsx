@@ -19,6 +19,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [copied, setCopied] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -31,7 +32,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   useEffect(() => {
     // Initialize STT service
     try {
-      const sttProvider = process.env.NEXT_PUBLIC_STT_PROVIDER as 'webspeech' | 'deepgram' || 'webspeech';
       sttServiceRef.current = createSTTService(sttProvider);
       console.log(`🎤 [STT] STT service initialized with provider: ${sttProvider}`);
     } catch (error) {
@@ -47,7 +47,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         sttServiceRef.current.stopTranscription();
       }
     };
-  }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomName, sttProvider]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize audio context on first user interaction
   useEffect(() => {
@@ -1021,9 +1021,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           isHero: true
         });
         
-        // Play TTS audio if available
-        if (data.audioBuffer) {
-          console.log('🎵 [FRONTEND] === PLAYING TTS AUDIO ===');
+        // Play TTS audio if available - broadcast to all participants
+        if (data.audioBuffer && room) {
+          console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
           console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
           console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
           
@@ -1031,7 +1031,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             // Initialize audio context if not already done
             if (!audioContextRef.current) {
               audioContextRef.current = new AudioContext();
-            console.log('🎵 [FRONTEND] Creating audio context...');
+              console.log('🎵 [FRONTEND] Creating audio context...');
             }
             
             // Resume audio context if suspended (required for user interaction)
@@ -1040,18 +1040,57 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               console.log('🎵 [FRONTEND] Audio context resumed');
             }
             
+            // Decode audio data
             const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
             console.log('🎵 [FRONTEND] Decoded audio data size:', audioData.length, 'bytes');
             
             const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
             console.log('🎵 [FRONTEND] Audio buffer created successfully');
             
+            // Create a MediaStreamDestination to capture audio
+            const destination = audioContextRef.current.createMediaStreamDestination();
+            
+            // Create source and connect to destination
             const source = audioContextRef.current.createBufferSource();
             source.buffer = audioBuffer;
-            source.connect(audioContextRef.current.destination);
-            source.start();
+            source.connect(destination);
+            source.connect(audioContextRef.current.destination); // Also play locally
             
-            console.log('✅ [FRONTEND] Audio playback started!');
+            // Get audio track from the MediaStream
+            const audioTrack = destination.stream.getAudioTracks()[0];
+            
+            if (audioTrack) {
+              console.log('🎵 [FRONTEND] Creating LiveKit audio track from TTS...');
+              
+              // Publish audio track to LiveKit so all participants can hear
+              const publication = await room.localParticipant.publishTrack(audioTrack, {
+                name: 'hero-tts-audio',
+                source: 'microphone' as any, // Use microphone source for compatibility
+              });
+              
+              console.log('✅ [FRONTEND] Hero TTS audio published to LiveKit!');
+              
+              // Start playback
+              source.start();
+              console.log('✅ [FRONTEND] Audio playback started and broadcasting!');
+              
+              // Clean up after playback
+              source.onended = async () => {
+                console.log('🧹 [FRONTEND] TTS playback ended, cleaning up LiveKit track...');
+                try {
+                  await room.localParticipant.unpublishTrack(audioTrack);
+                  audioTrack.stop();
+                  console.log('✅ [FRONTEND] Hero TTS audio track cleaned up');
+                } catch (cleanupError) {
+                  console.warn('⚠️ [FRONTEND] Error cleaning up TTS track:', cleanupError);
+                }
+              };
+            } else {
+              console.warn('⚠️ [FRONTEND] No audio track available, falling back to local playback');
+              source.connect(audioContextRef.current.destination);
+              source.start();
+            }
+            
           } catch (audioError) {
             console.warn('❌ [FRONTEND] Error playing TTS audio:', audioError);
             // Fallback: try using HTML5 audio element
@@ -1068,7 +1107,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             }
           }
         } else {
-          console.log('⚠️ [FRONTEND] No audio buffer provided in response');
+          if (!data.audioBuffer) {
+            console.log('⚠️ [FRONTEND] No audio buffer provided in response');
+          }
+          if (!room) {
+            console.log('⚠️ [FRONTEND] Room not available for broadcasting');
+          }
         }
       } else if (data.success && data.message) {
         console.log('💬 [FRONTEND] Debug message from API:', data.message);
@@ -1220,6 +1264,49 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log(`📹 Video ${!isVideoEnabled ? 'enabled' : 'disabled'}`);
     } catch (error) {
       console.error('Error toggling video:', error);
+    }
+  };
+
+  const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram') => {
+    try {
+      // Stop current STT service
+      if (sttServiceRef.current) {
+        await sttServiceRef.current.stopTranscription();
+        console.log('🛑 [STT] Stopped current STT service');
+      }
+
+      // Switch provider (use parameter or toggle)
+      const targetProvider = newProvider || (sttProvider === 'webspeech' ? 'deepgram' : 'webspeech');
+      setSttProvider(targetProvider);
+      
+      // Create new STT service
+      sttServiceRef.current = createSTTService(targetProvider);
+      console.log(`🔄 [STT] Switched to provider: ${targetProvider}`);
+
+      // Restart transcription if room is connected
+      if (room && room.state === 'connected') {
+        await startTranscription(room);
+        console.log(`🎤 [STT] Restarted transcription with ${targetProvider}`);
+      }
+
+      // Add notification to transcript
+      addTranscript({
+        id: Date.now().toString(),
+        text: `🎤 Switched to ${targetProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
+
+    } catch (error) {
+      console.error('❌ [STT] Error switching STT provider:', error);
+      addTranscript({
+        id: Date.now().toString(),
+        text: `❌ Failed to switch STT provider: ${error}`,
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
     }
   };
 
@@ -1922,6 +2009,87 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* STT Provider Selection */}
+        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              backgroundColor: '#3b82f6',
+              borderRadius: '50%'
+            }}></div>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Speech Recognition</h3>
+          </div>
+          
+          <div style={{
+            backgroundColor: '#374151',
+            borderRadius: '8px',
+            padding: '12px',
+            border: '1px solid rgba(59, 130, 246, 0.2)'
+          }}>
+            <label style={{ 
+              display: 'block', 
+              color: '#d1d5db', 
+              fontSize: '14px', 
+              fontWeight: '500', 
+              marginBottom: '8px' 
+            }}>
+              Provider:
+            </label>
+            <select
+              value={sttProvider}
+              onChange={(e) => {
+                const newProvider = e.target.value as 'webspeech' | 'deepgram';
+                if (newProvider !== sttProvider) {
+                  toggleSTTProvider(newProvider);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: '#1f2937',
+                border: '1px solid #4b5563',
+                borderRadius: '6px',
+                color: 'white',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                transition: 'all 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#3b82f6';
+                e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#4b5563';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="webspeech">Web Speech API</option>
+              <option value="deepgram">Deepgram</option>
+            </select>
+            
+            <div style={{ 
+              marginTop: '8px', 
+              fontSize: '12px', 
+              color: '#9ca3af',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: sttProvider === 'deepgram' ? '#10b981' : '#3b82f6',
+                borderRadius: '50%'
+              }}></div>
+              <span>
+                {sttProvider === 'deepgram' ? 'Premium accuracy' : 'Browser native'}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Live Transcription */}
