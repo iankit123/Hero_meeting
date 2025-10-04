@@ -703,6 +703,26 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     // Make test function globally available for manual testing
     (window as any).runVisibilityTest = () => runBidirectionalVisibilityTest();
     
+    // Make speech recognition restart function globally available
+    (window as any).restartSpeechRecognition = () => {
+      console.log('🔄 [MANUAL] Manual speech recognition restart requested...');
+      if (room && room.state === 'connected') {
+        try {
+          // Force stop current recognition
+          const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+          if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.stop();
+            setTimeout(() => {
+              startTranscription(room);
+            }, 1000);
+          }
+        } catch (error) {
+          console.error('❌ [MANUAL] Manual restart failed:', error);
+        }
+      }
+    };
+    
     // Make emergency video stream fix available globally
     (window as any).fixVideoStream = async () => {
       if (!localVideoTrack || !localVideoRef.current) return;
@@ -899,19 +919,24 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       recognition.interimResults = true;
       recognition.lang = 'en-US';
       
-      // Improve speech recognition sensitivity
-      recognition.maxAlternatives = 3; // Get multiple recognition alternatives
+      // Improve speech recognition stability
+      recognition.maxAlternatives = 1; // Reduce alternatives for better performance
       recognition.serviceURI = ''; // Use default service
       
-      // Set longer timeout for better detection
+      // Set more conservative settings for better stability
       if ('webkitSpeechRecognition' in window) {
         (recognition as any).continuous = true;
         (recognition as any).interimResults = true;
-        (recognition as any).maxAlternatives = 3;
+        (recognition as any).maxAlternatives = 1;
+        // Add timeout settings to prevent hanging
+        (recognition as any).maxSpeechTimeout = 10000; // 10 seconds max speech
+        (recognition as any).maxSilenceTimeout = 5000; // 5 seconds max silence
       }
 
       let isListening = false;
       let keepAliveInterval: NodeJS.Timeout | null = null;
+      let speechTimeout: NodeJS.Timeout | null = null;
+      let lastSpeechTime = Date.now();
 
       recognition.onstart = () => {
         console.log('🎤 [SPEECH] Recognition started - listening for voice input');
@@ -921,10 +946,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         if (keepAliveInterval) clearInterval(keepAliveInterval);
         keepAliveInterval = setInterval(() => {
           if (isListening && room && room.state === 'connected') {
-            // Just a heartbeat - recognition is already continuous
-            console.log('💓 [SPEECH] Keepalive - still listening...');
+            const timeSinceLastSpeech = Date.now() - lastSpeechTime;
+            console.log('💓 [SPEECH] Keepalive - still listening...', `(${Math.round(timeSinceLastSpeech/1000)}s since last speech)`);
+            
+            // If no speech detected for 30 seconds, force restart recognition
+            if (timeSinceLastSpeech > 30000) {
+              console.log('⚠️ [SPEECH] No speech detected for 30s - forcing restart...');
+              try {
+                recognition.stop();
+              } catch (e) {
+                console.log('🔄 [SPEECH] Recognition already stopped, restarting...');
+                setTimeout(() => {
+                  try {
+                    recognition.start();
+                    lastSpeechTime = Date.now(); // Reset timer
+                  } catch (restartError) {
+                    console.error('❌ [SPEECH] Force restart failed:', restartError);
+                  }
+                }, 1000);
+              }
+            }
           }
-        }, 5000); // Log every 5 seconds to confirm listening
+        }, 10000); // Check every 10 seconds
         
         addTranscript({
           id: Date.now().toString(),
@@ -951,6 +994,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         // Show final transcript
         if (finalTranscript.trim()) {
           console.log('🎤 [SPEECH] Raw transcript received:', finalTranscript.trim());
+          lastSpeechTime = Date.now(); // Update last speech time
           
           addTranscript({
             id: Date.now().toString(),
@@ -963,24 +1007,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           // Store all speech in context (not just Hero-triggered messages)
           storeSpeechInContext(finalTranscript.trim());
 
-          // Check for Hero trigger phrases (case insensitive) - check both current and recent context
-          const recentContext = transcript.slice(-3).map(t => t.text).join(' ').toLowerCase();
-          const currentAndRecent = (recentContext + ' ' + finalTranscript).toLowerCase();
-          
+          // Check for Hero trigger phrases (case insensitive)
           console.log('🔍 [TRIGGER] Checking for Hero trigger in:', finalTranscript);
-          console.log('🔍 [TRIGGER] Recent context:', recentContext);
           
-          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero/) || 
-              currentAndRecent.match(/(hey|hi|hello)\s+hero/) ||
-              finalTranscript.toLowerCase().includes('hero') ||
-              (finalTranscript.toLowerCase().includes('hero') && recentContext.includes('what'))) {
+          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero|^\s*hero\b/) || 
+              finalTranscript.toLowerCase().includes('hero')) {
             console.log('✅ [TRIGGER] Hero trigger detected! Sending to backend...');
             console.log('📝 [TRIGGER] Full message:', finalTranscript);
-            console.log('📝 [TRIGGER] Context:', recentContext);
             
-            // Use the full context for better understanding
-            const fullContext = currentAndRecent.includes('hero') ? currentAndRecent : finalTranscript;
-            handleHeroTrigger(fullContext);
+            handleHeroTrigger(finalTranscript);
           } else {
             console.log('❌ [TRIGGER] No Hero trigger found in transcript');
           }
@@ -998,11 +1033,16 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             isTranscript: true
           });
         } else if (event.error === 'aborted') {
-          console.log('⚠️ [SPEECH] Recognition aborted, will restart via onend handler');
+          console.log('⚠️ [SPEECH] Recognition aborted - this is normal, will restart automatically');
+          // Don't restart immediately on abort - let onend handle it
         } else if (event.error === 'network') {
           console.warn('🌐 [SPEECH] Network error in speech recognition - connection issues');
         } else if (event.error === 'no-speech') {
           console.log('🔇 [SPEECH] No speech detected - timeout reached');
+        } else if (event.error === 'audio-capture') {
+          console.warn('🎤 [SPEECH] Audio capture error - microphone may be in use');
+        } else if (event.error === 'service-not-allowed') {
+          console.warn('🚫 [SPEECH] Speech recognition service not allowed');
         }
       };
 
@@ -1015,30 +1055,39 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           clearInterval(keepAliveInterval);
           keepAliveInterval = null;
         }
+        
+        // Clear speech timeout
+        if (speechTimeout) {
+          clearTimeout(speechTimeout);
+          speechTimeout = null;
+        }
+        
         // Only restart if room is connected and not manually stopped
         if (room && room.state === 'connected') {
-          // Immediate restart with minimal delay for continuous listening
+          // Use a longer delay to prevent rapid restart cycles
           setTimeout(() => {
             try {
-              if (!isListening) {
+              if (!isListening && room && room.state === 'connected') {
                 console.log('🔄 [SPEECH] Restarting speech recognition...');
+                lastSpeechTime = Date.now(); // Reset speech timer
                 recognition.start();
               }
             } catch (error) {
               console.warn('⚠️ [SPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
-              // If immediate restart fails, try again after a short delay
+              // If immediate restart fails, try again after a longer delay
               setTimeout(() => {
                 if (!isListening && room && room.state === 'connected') {
                   try {
                     console.log('🔄 [SPEECH] Retry restarting speech recognition...');
+                    lastSpeechTime = Date.now(); // Reset speech timer
                     recognition.start();
                   } catch (retryError) {
                     console.error('❌ [SPEECH] Retry restart also failed:', retryError);
                   }
                 }
-              }, 300);
+              }, 1000); // Increased delay to 1 second
             }
-          }, 100); // Reduced from 500ms to 100ms for minimal gap
+          }, 500); // Increased from 100ms to 500ms for more stable restart
         }
       };
 

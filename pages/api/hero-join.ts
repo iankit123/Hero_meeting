@@ -61,8 +61,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       console.log(`🎵 [TTS] Using provider: ${ttsProvider}`);
 
-      // Check for Hero trigger phrases (hey hero, hi hero, etc.)
-      const triggerPhrase = /(hey|hi|hello)\s+hero/i;
+      // Check for Hero trigger phrases (hey hero, hi hero, hello hero, or just hero)
+      const triggerPhrase = /(hey|hi|hello)\s+hero|^\s*hero\b/i;
       console.log('🔍 [API] Checking trigger phrase against:', message);
       
       if (!triggerPhrase.test(message)) {
