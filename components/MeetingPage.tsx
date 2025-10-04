@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, TrackPublication, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
 import ChatPanel, { ChatMessage } from './ChatPanel';
+import { createSTTService, STTService, STTResult } from '../services/stt';
 
 interface MeetingPageProps {
   roomName: string;
@@ -25,12 +26,25 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const sttServiceRef = useRef<STTService | null>(null);
 
   useEffect(() => {
+    // Initialize STT service
+    try {
+      const sttProvider = process.env.NEXT_PUBLIC_STT_PROVIDER as 'webspeech' | 'deepgram' || 'webspeech';
+      sttServiceRef.current = createSTTService(sttProvider);
+      console.log(`🎤 [STT] STT service initialized with provider: ${sttProvider}`);
+    } catch (error) {
+      console.error('❌ [STT] Failed to initialize STT service:', error);
+    }
+
     initializeRoom();
     return () => {
       if (room) {
         room.disconnect();
+      }
+      if (sttServiceRef.current) {
+        sttServiceRef.current.stopTranscription();
       }
     };
   }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -706,17 +720,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     // Make speech recognition restart function globally available
     (window as any).restartSpeechRecognition = () => {
       console.log('🔄 [MANUAL] Manual speech recognition restart requested...');
-      if (room && room.state === 'connected') {
+      if (room && room.state === 'connected' && sttServiceRef.current) {
         try {
-          // Force stop current recognition
-          const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-          if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.stop();
-            setTimeout(() => {
-              startTranscription(room);
-            }, 1000);
-          }
+          sttServiceRef.current.stopTranscription();
+          setTimeout(() => {
+            startTranscription(room);
+          }, 1000);
         } catch (error) {
           console.error('❌ [MANUAL] Manual restart failed:', error);
         }
@@ -899,14 +908,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   
   const startTranscription = async (room: Room) => {
     try {
-      // Check if browser supports speech recognition
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      
-      if (!SpeechRecognition) {
-        console.warn('Speech recognition not supported in this browser');
+      if (!sttServiceRef.current) {
+        console.error('❌ [STT] STT service not initialized');
         addTranscript({
           id: Date.now().toString(),
-          text: 'Speech recognition not supported in this browser. Try using Chrome or Edge.',
+          text: '❌ Speech recognition service not available. Please refresh the page.',
           speaker: 'system',
           timestamp: Date.now(),
           isTranscript: true
@@ -914,188 +920,51 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         return;
       }
 
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+      console.log('🎤 [STT] Starting transcription service...');
       
-      // Improve speech recognition stability
-      recognition.maxAlternatives = 1; // Reduce alternatives for better performance
-      recognition.serviceURI = ''; // Use default service
-      
-      // Set more conservative settings for better stability
-      if ('webkitSpeechRecognition' in window) {
-        (recognition as any).continuous = true;
-        (recognition as any).interimResults = true;
-        (recognition as any).maxAlternatives = 1;
-        // Add timeout settings to prevent hanging
-        (recognition as any).maxSpeechTimeout = 10000; // 10 seconds max speech
-        (recognition as any).maxSilenceTimeout = 5000; // 5 seconds max silence
-      }
-
-      let isListening = false;
-      let keepAliveInterval: NodeJS.Timeout | null = null;
-      let speechTimeout: NodeJS.Timeout | null = null;
-      let lastSpeechTime = Date.now();
-
-      recognition.onstart = () => {
-        console.log('🎤 [SPEECH] Recognition started - listening for voice input');
-        isListening = true;
-        
-        // Keepalive mechanism to prevent auto-stop
-        if (keepAliveInterval) clearInterval(keepAliveInterval);
-        keepAliveInterval = setInterval(() => {
-          if (isListening && room && room.state === 'connected') {
-            const timeSinceLastSpeech = Date.now() - lastSpeechTime;
-            console.log('💓 [SPEECH] Keepalive - still listening...', `(${Math.round(timeSinceLastSpeech/1000)}s since last speech)`);
-            
-            // If no speech detected for 30 seconds, force restart recognition
-            if (timeSinceLastSpeech > 30000) {
-              console.log('⚠️ [SPEECH] No speech detected for 30s - forcing restart...');
-              try {
-                recognition.stop();
-              } catch (e) {
-                console.log('🔄 [SPEECH] Recognition already stopped, restarting...');
-                setTimeout(() => {
-                  try {
-                    recognition.start();
-                    lastSpeechTime = Date.now(); // Reset timer
-                  } catch (restartError) {
-                    console.error('❌ [SPEECH] Force restart failed:', restartError);
-                  }
-                }, 1000);
-              }
-            }
-          }
-        }, 10000); // Check every 10 seconds
+      // Set up transcript callback
+      sttServiceRef.current.onTranscript((result: STTResult) => {
+        console.log('🎤 [STT] Transcript received:', result.text);
         
         addTranscript({
           id: Date.now().toString(),
-          text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
-          speaker: 'system',
-          timestamp: Date.now(),
+          text: result.text,
+          speaker: result.speaker || 'user',
+          timestamp: result.timestamp,
           isTranscript: true
         });
-      };
 
-      recognition.onresult = (event: any) => {
-        let finalTranscript = '';
-        let interimTranscript = '';
+        // Store all speech in context (not just Hero-triggered messages)
+        storeSpeechInContext(result.text);
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-          } else {
-            interimTranscript += transcript;
-          }
-        }
-
-        // Show final transcript
-        if (finalTranscript.trim()) {
-          console.log('🎤 [SPEECH] Raw transcript received:', finalTranscript.trim());
-          lastSpeechTime = Date.now(); // Update last speech time
+        // Check for Hero/Hiro trigger phrases (case insensitive)
+        console.log('🔍 [TRIGGER] Checking for Hero/Hiro trigger in:', result.text);
+        
+        if (result.text.toLowerCase().match(/(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/) || 
+            result.text.toLowerCase().includes('hero') || 
+            result.text.toLowerCase().includes('hiro')) {
+          console.log('✅ [TRIGGER] Hero/Hiro trigger detected! Sending to backend...');
+          console.log('📝 [TRIGGER] Full message:', result.text);
           
-          addTranscript({
-            id: Date.now().toString(),
-            text: finalTranscript.trim(),
-            speaker: 'user',
-            timestamp: Date.now(),
-            isTranscript: true
-          });
-
-          // Store all speech in context (not just Hero-triggered messages)
-          storeSpeechInContext(finalTranscript.trim());
-
-          // Check for Hero trigger phrases (case insensitive)
-          console.log('🔍 [TRIGGER] Checking for Hero trigger in:', finalTranscript);
-          
-          if (finalTranscript.toLowerCase().match(/(hey|hi|hello)\s+hero|^\s*hero\b/) || 
-              finalTranscript.toLowerCase().includes('hero')) {
-            console.log('✅ [TRIGGER] Hero trigger detected! Sending to backend...');
-            console.log('📝 [TRIGGER] Full message:', finalTranscript);
-            
-            handleHeroTrigger(finalTranscript);
-          } else {
-            console.log('❌ [TRIGGER] No Hero trigger found in transcript');
-          }
+          handleHeroTrigger(result.text);
+        } else {
+          console.log('❌ [TRIGGER] No Hero/Hiro trigger found in transcript');
         }
-      };
+      });
 
-      recognition.onerror = (event: any) => {
-        console.error('❌ [SPEECH] Recognition error:', event.error);
-        if (event.error === 'not-allowed') {
-          addTranscript({
-            id: Date.now().toString(),
-            text: '❌ Microphone access denied. Please allow microphone access to use voice commands.',
-            speaker: 'system',
-            timestamp: Date.now(),
-            isTranscript: true
-          });
-        } else if (event.error === 'aborted') {
-          console.log('⚠️ [SPEECH] Recognition aborted - this is normal, will restart automatically');
-          // Don't restart immediately on abort - let onend handle it
-        } else if (event.error === 'network') {
-          console.warn('🌐 [SPEECH] Network error in speech recognition - connection issues');
-        } else if (event.error === 'no-speech') {
-          console.log('🔇 [SPEECH] No speech detected - timeout reached');
-        } else if (event.error === 'audio-capture') {
-          console.warn('🎤 [SPEECH] Audio capture error - microphone may be in use');
-        } else if (event.error === 'service-not-allowed') {
-          console.warn('🚫 [SPEECH] Speech recognition service not allowed');
-        }
-      };
-
-      recognition.onend = () => {
-        console.log('🔴 [SPEECH] Recognition ended - preparing to restart');
-        isListening = false;
-        
-        // Clear keepalive interval
-        if (keepAliveInterval) {
-          clearInterval(keepAliveInterval);
-          keepAliveInterval = null;
-        }
-        
-        // Clear speech timeout
-        if (speechTimeout) {
-          clearTimeout(speechTimeout);
-          speechTimeout = null;
-        }
-        
-        // Only restart if room is connected and not manually stopped
-        if (room && room.state === 'connected') {
-          // Use a longer delay to prevent rapid restart cycles
-          setTimeout(() => {
-            try {
-              if (!isListening && room && room.state === 'connected') {
-                console.log('🔄 [SPEECH] Restarting speech recognition...');
-                lastSpeechTime = Date.now(); // Reset speech timer
-                recognition.start();
-              }
-            } catch (error) {
-              console.warn('⚠️ [SPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
-              // If immediate restart fails, try again after a longer delay
-              setTimeout(() => {
-                if (!isListening && room && room.state === 'connected') {
-                  try {
-                    console.log('🔄 [SPEECH] Retry restarting speech recognition...');
-                    lastSpeechTime = Date.now(); // Reset speech timer
-                    recognition.start();
-                  } catch (retryError) {
-                    console.error('❌ [SPEECH] Retry restart also failed:', retryError);
-                  }
-                }
-              }, 1000); // Increased delay to 1 second
-            }
-          }, 500); // Increased from 100ms to 500ms for more stable restart
-        }
-      };
-
-      // Start recognition
-      recognition.start();
+      // Start transcription
+      await sttServiceRef.current.startTranscription();
+      
+      addTranscript({
+        id: Date.now().toString(),
+        text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
       
     } catch (error) {
-      console.error('Error starting transcription:', error);
+      console.error('❌ [STT] Error starting transcription:', error);
       addTranscript({
         id: Date.now().toString(),
         text: '❌ Failed to start speech recognition. Please refresh the page and try again.',

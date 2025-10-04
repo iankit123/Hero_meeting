@@ -61,8 +61,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       console.log(`🎵 [TTS] Using provider: ${ttsProvider}`);
 
-      // Check for Hero trigger phrases (hey hero, hi hero, hello hero, or just hero)
-      const triggerPhrase = /(hey|hi|hello)\s+hero|^\s*hero\b/i;
+      // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
+      const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
       console.log('🔍 [API] Checking trigger phrase against:', message);
       
       if (!triggerPhrase.test(message)) {
@@ -73,7 +73,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         });
       }
 
-      console.log('✅ [API] Hero trigger phrase detected!');
+      console.log('✅ [API] Hero/Hiro trigger phrase detected!');
       
       // Extract the question after the trigger phrase
       const question = message.replace(triggerPhrase, '').trim();
