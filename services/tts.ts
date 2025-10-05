@@ -22,7 +22,7 @@ export class ElevenLabsTTSService implements TTSService {
 
   async synthesize(
     text: string,
-    voiceId: string = 'pNInz6obpgDQGcFmaJgB',
+    voiceId: string = 'UzYWd2rD2PPFPjXRG3Ul', //Mohit - indian english
     speed?: number
   ): Promise<TTSResult> {
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;

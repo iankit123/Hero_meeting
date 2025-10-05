@@ -20,6 +20,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
+  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts'>('elevenlabs');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -1040,7 +1041,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         },
         body: JSON.stringify({
           roomName,
-          message: transcript
+          message: transcript,
+          ttsProvider: ttsProvider
         }),
       });
       
@@ -1266,7 +1268,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         },
         body: JSON.stringify({
           roomName,
-          message
+          message,
+          ttsProvider: ttsProvider
         }),
       });
 
@@ -1516,6 +1519,38 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       addTranscript({
         id: generateMessageId(),
         text: `❌ Failed to switch STT provider: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
+    }
+  };
+
+  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts') => {
+    try {
+      console.log('🔄 [TTS] === SWITCHING TTS PROVIDER ===');
+      
+      // Switch provider (use parameter or toggle)
+      const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : 'elevenlabs');
+      console.log(`🔄 [TTS] Switching from ${ttsProvider} to ${targetProvider}`);
+      
+      setTtsProvider(targetProvider);
+      
+      // Add notification to transcript
+      addTranscript({
+        id: generateMessageId(),
+        text: `🎵 Switched to ${targetProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
+      
+      console.log('✅ [TTS] === PROVIDER SWITCH COMPLETE ===');
+    } catch (error) {
+      console.error('❌ [TTS] Error switching TTS provider:', error);
+      addTranscript({
+        id: generateMessageId(),
+        text: `❌ Failed to switch TTS provider: ${error instanceof Error ? error.message : 'Unknown error'}`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -2300,6 +2335,87 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               }}></div>
               <span>
                 {sttProvider === 'deepgram' ? 'Premium accuracy' : 'Browser native'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* TTS Provider Selection */}
+        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <div style={{
+              width: '12px',
+              height: '12px',
+              backgroundColor: '#f59e0b',
+              borderRadius: '50%'
+            }}></div>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Text-to-Speech</h3>
+          </div>
+          
+          <div style={{
+            backgroundColor: '#374151',
+            borderRadius: '8px',
+            padding: '12px',
+            border: '1px solid rgba(245, 158, 11, 0.2)'
+          }}>
+            <label style={{ 
+              display: 'block', 
+              color: '#d1d5db', 
+              fontSize: '14px', 
+              fontWeight: '500', 
+              marginBottom: '8px' 
+            }}>
+              Provider:
+            </label>
+            <select
+              value={ttsProvider}
+              onChange={(e) => {
+                const newProvider = e.target.value as 'elevenlabs' | 'gtts';
+                if (newProvider !== ttsProvider) {
+                  toggleTTSProvider(newProvider);
+                }
+              }}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                backgroundColor: '#1f2937',
+                border: '1px solid #4b5563',
+                borderRadius: '6px',
+                color: 'white',
+                fontSize: '14px',
+                cursor: 'pointer',
+                outline: 'none',
+                transition: 'all 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#f59e0b';
+                e.target.style.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.2)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#4b5563';
+                e.target.style.boxShadow = 'none';
+              }}
+            >
+              <option value="elevenlabs">ElevenLabs</option>
+              <option value="gtts">Google TTS</option>
+            </select>
+            
+            <div style={{ 
+              marginTop: '8px', 
+              fontSize: '12px', 
+              color: '#9ca3af',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <div style={{
+                width: '8px',
+                height: '8px',
+                backgroundColor: ttsProvider === 'elevenlabs' ? '#10b981' : '#3b82f6',
+                borderRadius: '50%'
+              }}></div>
+              <span>
+                {ttsProvider === 'elevenlabs' ? 'Premium quality' : 'Free service'}
               </span>
             </div>
           </div>

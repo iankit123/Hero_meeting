@@ -37,32 +37,39 @@ export class WebSpeechSTTService implements STTService {
     this.recognition.interimResults = true;
     this.recognition.lang = 'en-US';
     
-    // Improve speech recognition stability
-    this.recognition.maxAlternatives = 1;
+    // Improve speech recognition sensitivity and stability
+    this.recognition.maxAlternatives = 3; // Allow more alternatives for better accuracy
     this.recognition.serviceURI = '';
     
-    // Set more conservative settings for better stability
+    // Enhanced settings for better sensitivity and continuous listening
     if ('webkitSpeechRecognition' in window) {
-      (this.recognition as any).continuous = true;
-      (this.recognition as any).interimResults = true;
-      (this.recognition as any).maxAlternatives = 1;
-      (this.recognition as any).maxSpeechTimeout = 10000;
-      (this.recognition as any).maxSilenceTimeout = 5000;
+      const webkitRecognition = this.recognition as any;
+      webkitRecognition.continuous = true;
+      webkitRecognition.interimResults = true;
+      webkitRecognition.maxAlternatives = 3;
+      
+      // More sensitive timeout settings
+      webkitRecognition.maxSpeechTimeout = 15000; // Increased from 10s to 15s
+      webkitRecognition.maxSilenceTimeout = 3000; // Reduced from 5s to 3s for faster response
+      
+      // Additional sensitivity settings
+      // Note: grammars property requires SpeechGrammarList, not null
+      // We'll skip setting grammars to avoid restrictions
     }
 
     this.recognition.onstart = () => {
       console.log('🎤 [WEBSPEECH] Recognition started - listening for voice input');
       this.isListening = true;
       
-      // Start keepalive interval
+      // Start more aggressive keepalive interval
       this.keepAliveInterval = setInterval(() => {
         if (this.isListening) {
           const timeSinceLastSpeech = Date.now() - this.lastSpeechTime;
           console.log('💓 [WEBSPEECH] Keepalive - still listening...', `(${Math.round(timeSinceLastSpeech/1000)}s since last speech)`);
           
-          // If no speech detected for 30 seconds, force restart recognition
-          if (timeSinceLastSpeech > 30000) {
-            console.log('⚠️ [WEBSPEECH] No speech detected for 30s - forcing restart...');
+          // More aggressive restart strategy for better sensitivity
+          if (timeSinceLastSpeech > 20000) { // Reduced from 30s to 20s
+            console.log('⚠️ [WEBSPEECH] No speech detected for 20s - forcing restart for better sensitivity...');
             try {
               this.recognition.stop();
             } catch (e) {
@@ -74,11 +81,11 @@ export class WebSpeechSTTService implements STTService {
                 } catch (restartError) {
                   console.error('❌ [WEBSPEECH] Force restart failed:', restartError);
                 }
-              }, 1000);
+              }, 500); // Reduced delay from 1000ms to 500ms
             }
           }
         }
-      }, 10000);
+      }, 5000); // Check every 5 seconds instead of 10 for more responsive monitoring
     };
 
     this.recognition.onresult = (event: any) => {
@@ -108,6 +115,12 @@ export class WebSpeechSTTService implements STTService {
           });
         }
       }
+      
+      // Also update speech time for interim results to improve sensitivity
+      if (interimTranscript.trim()) {
+        console.log('🎤 [WEBSPEECH] Interim transcript:', interimTranscript.trim());
+        this.lastSpeechTime = Date.now(); // Update speech time even for interim results
+      }
     };
 
     this.recognition.onerror = (event: any) => {
@@ -121,7 +134,19 @@ export class WebSpeechSTTService implements STTService {
       } else if (event.error === 'network') {
         console.warn('🌐 [WEBSPEECH] Network error in speech recognition - connection issues');
       } else if (event.error === 'no-speech') {
-        console.log('🔇 [WEBSPEECH] No speech detected - timeout reached');
+        console.log('🔇 [WEBSPEECH] No speech detected - timeout reached, restarting for better sensitivity');
+        // Immediately restart for better sensitivity to short utterances
+        setTimeout(() => {
+          if (!this.isStopping && this.isListening) {
+            try {
+              console.log('🔄 [WEBSPEECH] Restarting after no-speech timeout...');
+              this.recognition.start();
+              this.lastSpeechTime = Date.now();
+            } catch (restartError) {
+              console.warn('⚠️ [WEBSPEECH] Restart after no-speech failed:', restartError);
+            }
+          }
+        }, 100); // Very short delay for immediate restart
       } else if (event.error === 'audio-capture') {
         console.warn('🎤 [WEBSPEECH] Audio capture error - microphone may be in use');
       } else if (event.error === 'service-not-allowed') {
@@ -151,17 +176,17 @@ export class WebSpeechSTTService implements STTService {
         this.speechTimeout = null;
       }
       
-      // Restart recognition
+      // More aggressive restart for better sensitivity
       setTimeout(() => {
         try {
           if (!this.isListening && !this.isStopping) {
-            console.log('🔄 [WEBSPEECH] Restarting speech recognition...');
+            console.log('🔄 [WEBSPEECH] Restarting speech recognition for better sensitivity...');
             this.lastSpeechTime = Date.now();
             this.recognition.start();
           }
         } catch (error) {
           console.warn('⚠️ [WEBSPEECH] Recognition restart failed:', error instanceof Error ? error.message : 'Unknown error');
-          // Retry after a longer delay
+          // More aggressive retry with shorter delay
           setTimeout(() => {
             if (!this.isListening && !this.isStopping) {
               try {
@@ -172,9 +197,9 @@ export class WebSpeechSTTService implements STTService {
                 console.error('❌ [WEBSPEECH] Retry restart also failed:', retryError);
               }
             }
-          }, 300);
+          }, 200); // Reduced from 300ms to 200ms for faster recovery
         }
-      }, 100);
+      }, 50); // Reduced from 100ms to 50ms for faster restart
     };
   }
 

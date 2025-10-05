@@ -10,7 +10,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { roomName, message, context, action } = req.body;
+    const { roomName, message, context, action, ttsProvider } = req.body;
 
     if (action === 'join') {
       // Hero bot joining the room
@@ -55,11 +55,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Process user message and generate Hero response
       const llmService = createLLMService();
       
-      // Use GTTS for testing (free) or ElevenLabs for production
-      const ttsProvider = process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
-      const ttsService = createTTSService(ttsProvider);
+      // Use TTS provider from request or fallback to environment variable
+      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
+      const ttsService = createTTSService(selectedTtsProvider);
       
-      console.log(`🎵 [TTS] Using provider: ${ttsProvider}`);
+      console.log(`🎵 [TTS] Using provider: ${selectedTtsProvider}`);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
