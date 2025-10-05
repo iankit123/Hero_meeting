@@ -28,6 +28,19 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
     }
   };
 
+  const formatSpeakerName = (speaker: string | undefined) => {
+    if (!speaker) return 'Unknown Speaker';
+    if (speaker === 'system') return 'System';
+    
+    // Convert UUID to Participant 1/2 based on a simple hash
+    const hash = speaker.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    
+    return `Participant ${Math.abs(hash) % 2 + 1}`;
+  };
+
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString([], { 
       hour: '2-digit', 
@@ -36,7 +49,7 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
   };
 
   return (
-    <div className={`bg-white border-l border-gray-200 flex flex-col transition-all duration-300 ${
+    <div className={`bg-white border-l border-gray-200 flex flex-col transition-all duration-300 h-full ${
       isExpanded ? 'w-80' : 'w-12'
     }`}>
       {/* Header */}
@@ -65,7 +78,7 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
       {isExpanded && (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 py-8">
                 <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -97,7 +110,7 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
                       ) : message.isTranscript ? (
                         <div className="w-6 h-6 bg-gray-400 rounded-full flex items-center justify-center">
                           <span className="text-white text-xs font-bold">
-                            {message.speaker || '?'}
+                            {formatSpeakerName(message.speaker).charAt(0)}
                           </span>
                         </div>
                       ) : (
@@ -106,7 +119,7 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
                         </div>
                       )}
                       <span className="text-sm font-medium text-gray-700">
-                        {message.isHero ? 'Hero' : message.isTranscript ? `Speaker ${message.speaker || 'Unknown'}` : 'You'}
+                        {message.isHero ? 'Hero' : message.isTranscript ? formatSpeakerName(message.speaker) : 'You'}
                       </span>
                     </div>
                     <span className="text-xs text-gray-500">

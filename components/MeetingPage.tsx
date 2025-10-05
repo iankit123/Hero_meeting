@@ -20,7 +20,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
-  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts'>('elevenlabs');
+  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts'>('gtts');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -311,7 +311,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const setupRoomEventListeners = (newRoom: Room) => {
     console.log('🎧 [EVENTS] Setting up room event listeners...');
     
-    // Set up data channel for Hero message broadcasting
+    // Set up data channel for Hero message and transcript broadcasting
     newRoom.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const data = JSON.parse(new TextDecoder().decode(payload));
@@ -324,6 +324,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             text: data.text,
             timestamp: data.timestamp,
             isHero: true
+          });
+        } else if (data.type === 'transcript') {
+          console.log('📝 [TRANSCRIPT] Broadcasting transcript to all participants');
+          addTranscript({
+            id: data.messageId,
+            text: data.text,
+            speaker: data.speaker,
+            timestamp: data.timestamp,
+            isTranscript: true
           });
         }
       } catch (error) {
@@ -907,9 +916,21 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     setMessages(prev => [...prev, message]);
   };
   
-  const addTranscript = (message: ChatMessage) => {
+  const addTranscript = async (message: ChatMessage) => {
     setTranscript(prev => [...prev, message]);
     // Also add to general messages for context
+    addMessage({ ...message, isTranscript: true });
+    
+    // Broadcast transcript to all participants if it's from local user
+    if (message.speaker === 'user' || message.speaker === 'local') {
+      const speakerName = room?.localParticipant?.identity || 'Participant 1';
+      await broadcastTranscript(message.text, speakerName, message.id);
+    }
+  };
+
+  // Add system transcript (no broadcasting)
+  const addSystemTranscript = (message: ChatMessage) => {
+    setTranscript(prev => [...prev, message]);
     addMessage({ ...message, isTranscript: true });
   };
   
@@ -955,13 +976,37 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.error('❌ [BROADCAST] Failed to broadcast Hero message:', error);
     }
   };
+
+  // Broadcast transcript to all participants via LiveKit data channel
+  const broadcastTranscript = async (text: string, speaker: string, messageId: string) => {
+    if (!room) {
+      console.warn('⚠️ [TRANSCRIPT-BROADCAST] No room available for broadcasting');
+      return;
+    }
+
+    try {
+      const transcriptData = {
+        type: 'transcript',
+        text: text,
+        speaker: speaker,
+        messageId: messageId,
+        timestamp: Date.now()
+      };
+
+      const payload = new TextEncoder().encode(JSON.stringify(transcriptData));
+      await room.localParticipant.publishData(payload, { reliable: true });
+      console.log('📤 [TRANSCRIPT-BROADCAST] Transcript broadcasted to all participants:', text, 'by', speaker);
+    } catch (error) {
+      console.error('❌ [TRANSCRIPT-BROADCAST] Failed to broadcast transcript:', error);
+    }
+  };
   
   
   const startTranscription = async (room: Room) => {
     try {
       if (!sttServiceRef.current) {
         console.error('❌ [STT] STT service not initialized');
-        addTranscript({
+        addSystemTranscript({
           id: generateMessageId(),
           text: '❌ Speech recognition service not available. Please refresh the page.',
           speaker: 'system',
@@ -974,16 +1019,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('🎤 [STT] Starting transcription service...');
       
       // Set up transcript callback
-      sttServiceRef.current.onTranscript((result: STTResult) => {
+      sttServiceRef.current.onTranscript(async (result: STTResult) => {
         console.log('🎤 [STT] Transcript received:', result.text);
-          
-          addTranscript({
-            id: generateMessageId(),
+        
+        // Use participant identity for speaker identification
+        const speakerName = room?.localParticipant?.identity || 'Participant 1';
+        
+        await addTranscript({
+          id: generateMessageId(),
           text: result.text,
-          speaker: result.speaker || 'user',
+          speaker: speakerName,
           timestamp: result.timestamp,
-            isTranscript: true
-          });
+          isTranscript: true
+        });
 
         // Store all speech in context (not just Hero-triggered messages)
         storeSpeechInContext(result.text);
@@ -1006,17 +1054,17 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       // Start transcription
       await sttServiceRef.current.startTranscription();
       
-          addTranscript({
+          addSystemTranscript({
             id: generateMessageId(),
         text: '🎤 Listening for speech... Say "Hey Hero" to activate the AI assistant.',
-            speaker: 'system',
-            timestamp: Date.now(),
-            isTranscript: true
-          });
+        speaker: 'system',
+        timestamp: Date.now(),
+        isTranscript: true
+      });
       
             } catch (error) {
       console.error('❌ [STT] Error starting transcription:', error);
-      addTranscript({
+      addSystemTranscript({
         id: generateMessageId(),
         text: '❌ Failed to start speech recognition. Please refresh the page and try again.',
         speaker: 'system',
@@ -1505,7 +1553,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
 
       // Add notification to transcript
-      addTranscript({
+      addSystemTranscript({
         id: generateMessageId(),
         text: `🎤 Switched to ${targetProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
         speaker: 'system',
@@ -1516,7 +1564,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('✅ [STT] === PROVIDER SWITCH COMPLETE ===');
     } catch (error) {
       console.error('❌ [STT] Error switching STT provider:', error);
-      addTranscript({
+      addSystemTranscript({
         id: generateMessageId(),
         text: `❌ Failed to switch STT provider: ${error instanceof Error ? error.message : 'Unknown error'}`,
         speaker: 'system',
@@ -1537,7 +1585,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       setTtsProvider(targetProvider);
       
       // Add notification to transcript
-      addTranscript({
+      addSystemTranscript({
         id: generateMessageId(),
         text: `🎵 Switched to ${targetProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
         speaker: 'system',
@@ -1548,7 +1596,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('✅ [TTS] === PROVIDER SWITCH COMPLETE ===');
     } catch (error) {
       console.error('❌ [TTS] Error switching TTS provider:', error);
-      addTranscript({
+      addSystemTranscript({
         id: generateMessageId(),
         text: `❌ Failed to switch TTS provider: ${error instanceof Error ? error.message : 'Unknown error'}`,
         speaker: 'system',
@@ -1619,9 +1667,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   }
 
   return (
-    <div className="meeting-container">
+    <div className="meeting-container" style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Main Video Area */}
-      <div className="video-area">
+      <div className="video-area" style={{ height: '100vh', overflow: 'hidden' }}>
         {/* Header */}
         <div style={{
           display: 'flex',
