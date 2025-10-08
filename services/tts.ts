@@ -9,6 +9,18 @@ export interface TTSResult {
 
 export type TTSProvider = 'elevenlabs' | 'gtts';
 
+// Text sanitization function to clean text for TTS
+function sanitizeText(text: string): string {
+  return text
+    .replace(/\*\*/g, "") // remove bold markdown (**text**)
+    .replace(/[*_~`#<>[\]{}|]/g, "") // remove markdown and special chars
+    .replace(/https?:\/\/\S+/g, "") // remove links
+    .replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\x00-\x7F]/g, "") // remove emojis and non-ASCII
+    .replace(/\s{2,}/g, " ") // collapse multiple spaces
+    .replace(/\s+([.,!?;:])/g, "$1") // clean space before punctuation
+    .trim();
+}
+
 // -------------------- ELEVEN LABS --------------------
 export class ElevenLabsTTSService implements TTSService {
   private apiKey: string;
@@ -27,8 +39,10 @@ export class ElevenLabsTTSService implements TTSService {
   ): Promise<TTSResult> {
     const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
     
+    const sanitizedText = sanitizeText(text);
+    
     const requestBody = {
-      text: text.trim(),
+      text: sanitizedText,
       model_id: 'eleven_monolingual_v1',
       voice_settings: {
         stability: 0.5,
@@ -54,7 +68,7 @@ export class ElevenLabsTTSService implements TTSService {
     const audioBuffer = Buffer.from(await response.arrayBuffer());
     
     // Estimate duration (~60ms per character)
-    const duration = text.length * 0.06;
+    const duration = sanitizedText.length * 0.06;
 
     return {
       audioBuffer,
@@ -68,14 +82,14 @@ export class GTTSService implements TTSService {
   private baseUrl = 'https://translate.google.com/translate_tts';
 
   async synthesize(text: string, voiceId?: string, speed: number = 1.5): Promise<TTSResult> {
-    const cleanText = text.replace(/\s+/g, ' ').trim();
+    const sanitizedText = sanitizeText(text);
 
-    if (!cleanText || cleanText.length < 2) {
+    if (!sanitizedText || sanitizedText.length < 2) {
       throw new Error('No valid text to synthesize');
     }
 
     // Split into 200-char safe chunks (GTTS limit is ~200–250 chars)
-    const chunks = this.splitIntoChunks(cleanText, 200);
+    const chunks = this.splitIntoChunks(sanitizedText, 200);
 
     const buffers: Buffer[] = [];
     let totalDuration = 0;
