@@ -294,3 +294,15 @@ For support, please open an issue on GitHub or contact the development team.
 ---
 
 **Note**: This is a prototype application. For production use, consider implementing additional security measures, error handling, and scalability improvements.
+
+
+- Response time - sometime finish sentence before 2 sec… only respond if pause of 2 sec.. and take all context after saying hero.. even if multiple sentence… currently takes only 1 sentence which contains hero
+- Save transcriptions, json db - Supabase - Vector database - improve
+    - Question answering over past transcripts - Use vector embeddings (e.g., `Supabase Vector` or `LlamaIndex`)
+- Give meeting context before meeting - Maybe agenda, and some deep research before meeting
+- Better Design
+    - Hero - bubble speaker
+    - Option to see past meetings
+- Check if LivKit better approach for scalable solution (cost and performance wise)?
+- Options to have multiple attendees
+- Meeting room names
