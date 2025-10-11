@@ -9,11 +9,13 @@ export interface STTService {
   startTranscription(audioStream?: MediaStream): Promise<void>;
   stopTranscription(): void;
   onTranscript(callback: (result: STTResult) => void): void;
+  onInterimResult?(callback: (text: string) => void): void;
 }
 
 export class WebSpeechSTTService implements STTService {
   private recognition: any;
   private transcriptCallback?: (result: STTResult) => void;
+  private interimCallback?: (text: string) => void;
   private isListening = false;
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private speechTimeout: NodeJS.Timeout | null = null;
@@ -120,6 +122,11 @@ export class WebSpeechSTTService implements STTService {
       if (interimTranscript.trim()) {
         console.log('🎤 [WEBSPEECH] Interim transcript:', interimTranscript.trim());
         this.lastSpeechTime = Date.now(); // Update speech time even for interim results
+        
+        // Call interim callback if registered
+        if (this.interimCallback) {
+          this.interimCallback(interimTranscript.trim());
+        }
       }
     };
 
@@ -240,10 +247,15 @@ export class WebSpeechSTTService implements STTService {
     
     // Clear any pending callbacks
     this.transcriptCallback = undefined;
+    this.interimCallback = undefined;
   }
 
   onTranscript(callback: (result: STTResult) => void): void {
     this.transcriptCallback = callback;
+  }
+
+  onInterimResult(callback: (text: string) => void): void {
+    this.interimCallback = callback;
   }
 }
 

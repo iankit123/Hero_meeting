@@ -30,6 +30,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const sttServiceRef = useRef<STTService | null>(null);
   const messageIdCounter = useRef<number>(0);
+  
+  // Hero query accumulation ref for 2-second pause detection
+  const heroQueryAccumulator = useRef<{
+    isAccumulating: boolean;
+    messages: string[];
+    startTime: number;
+    timeout: NodeJS.Timeout | null;
+  }>({
+    isAccumulating: false,
+    messages: [],
+    startTime: 0,
+    timeout: null
+  });
 
   useEffect(() => {
     // Initialize STT service
@@ -47,6 +60,10 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
       if (sttServiceRef.current) {
         sttServiceRef.current.stopTranscription();
+      }
+      // Clean up hero query accumulator timeout
+      if (heroQueryAccumulator.current.timeout) {
+        clearTimeout(heroQueryAccumulator.current.timeout);
       }
     };
   }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1037,19 +1054,109 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         storeSpeechInContext(result.text);
 
         // Check for Hero/Hiro trigger phrases (case insensitive)
+        const hasHeroTrigger = result.text.toLowerCase().match(/(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/);
         console.log('🔍 [TRIGGER] Checking for Hero/Hiro trigger in:', result.text);
         
-        if (result.text.toLowerCase().match(/(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/) || 
-            result.text.toLowerCase().includes('hero') || 
-            result.text.toLowerCase().includes('hiro')) {
-          console.log('✅ [TRIGGER] Hero/Hiro trigger detected! Sending to backend...');
-          console.log('📝 [TRIGGER] Full message:', result.text);
+        if (hasHeroTrigger) {
+          console.log('✅ [TRIGGER] Hero/Hiro trigger detected! Starting accumulation...');
           
-          handleHeroTrigger(result.text);
+          // Start accumulating mode
+          heroQueryAccumulator.current.isAccumulating = true;
+          heroQueryAccumulator.current.messages = [result.text];
+          heroQueryAccumulator.current.startTime = Date.now();
+          
+          // Clear any existing timeout
+          if (heroQueryAccumulator.current.timeout) {
+            clearTimeout(heroQueryAccumulator.current.timeout);
+          }
+          
+          // Set 2-second timeout to process accumulated query
+          heroQueryAccumulator.current.timeout = setTimeout(() => {
+            const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+            console.log('⏰ [ACCUMULATOR] 2-second pause detected. Processing accumulated query:', fullQuery);
+            console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+            
+            handleHeroTrigger(fullQuery);
+            
+            // Reset accumulator
+            heroQueryAccumulator.current.isAccumulating = false;
+            heroQueryAccumulator.current.messages = [];
+            heroQueryAccumulator.current.timeout = null;
+          }, 2000); // 2-second pause
+          
+        } else if (heroQueryAccumulator.current.isAccumulating) {
+          // Continue accumulating if we're in accumulation mode
+          const elapsed = Date.now() - heroQueryAccumulator.current.startTime;
+          
+          if (elapsed < 5000) { // Maximum 5 seconds of accumulation
+            console.log('📝 [ACCUMULATOR] Adding to query:', result.text);
+            heroQueryAccumulator.current.messages.push(result.text);
+            
+            // Reset the 2-second timeout
+            if (heroQueryAccumulator.current.timeout) {
+              clearTimeout(heroQueryAccumulator.current.timeout);
+            }
+            
+            heroQueryAccumulator.current.timeout = setTimeout(() => {
+              const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+              console.log('⏰ [ACCUMULATOR] 2-second pause detected. Processing accumulated query:', fullQuery);
+              console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+              
+              handleHeroTrigger(fullQuery);
+              
+              // Reset accumulator
+              heroQueryAccumulator.current.isAccumulating = false;
+              heroQueryAccumulator.current.messages = [];
+              heroQueryAccumulator.current.timeout = null;
+            }, 2000); // 2-second pause
           } else {
+            // Maximum accumulation time exceeded, process now
+            console.log('⚠️ [ACCUMULATOR] Maximum 5-second accumulation time reached. Processing now...');
+            const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+            
+            handleHeroTrigger(fullQuery);
+            
+            // Reset accumulator
+            heroQueryAccumulator.current.isAccumulating = false;
+            heroQueryAccumulator.current.messages = [];
+            if (heroQueryAccumulator.current.timeout) {
+              clearTimeout(heroQueryAccumulator.current.timeout);
+              heroQueryAccumulator.current.timeout = null;
+            }
+          }
+        } else {
           console.log('❌ [TRIGGER] No Hero/Hiro trigger found in transcript');
         }
       });
+
+      // Set up interim result callback to keep accumulator alive
+      if (sttServiceRef.current.onInterimResult) {
+        sttServiceRef.current.onInterimResult((interimText: string) => {
+          // If we're accumulating and receive interim results, reset the timeout
+          if (heroQueryAccumulator.current.isAccumulating) {
+            console.log('🔄 [ACCUMULATOR] Interim result detected, keeping accumulator alive:', interimText.substring(0, 50) + '...');
+            
+            // Clear existing timeout
+            if (heroQueryAccumulator.current.timeout) {
+              clearTimeout(heroQueryAccumulator.current.timeout);
+            }
+            
+            // Reset 2-second timeout
+            heroQueryAccumulator.current.timeout = setTimeout(() => {
+              const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+              console.log('⏰ [ACCUMULATOR] 2-second pause detected after interim results. Processing accumulated query:', fullQuery);
+              console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+              
+              handleHeroTrigger(fullQuery);
+              
+              // Reset accumulator
+              heroQueryAccumulator.current.isAccumulating = false;
+              heroQueryAccumulator.current.messages = [];
+              heroQueryAccumulator.current.timeout = null;
+            }, 2000); // 2-second pause
+          }
+        });
+      }
 
       // Start transcription
       await sttServiceRef.current.startTranscription();
