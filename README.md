@@ -294,3 +294,10 @@ For support, please open an issue on GitHub or contact the development team.
 ---
 
 **Note**: This is a prototype application. For production use, consider implementing additional security measures, error handling, and scalability improvements.
+
+
+
+
+- Ask name of participant in a in-app popup, before enteting meeting room. This should be applicable for all users.. weather meeting creator or someone joining. Once user enter name, then he should enter the meeting room.
+- When showing participants in the meeting room, show this names as the participants. Use these names to show in transcripts, and everywhere else where name is shown, inlcuding the database
+- All meeting rooms should have a 1 default participant as "Hero"

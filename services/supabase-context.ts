@@ -1,0 +1,357 @@
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+// Database types
+interface Meeting {
+  id: string;
+  room_name: string;
+  started_at: string;
+  ended_at?: string;
+  participant_count: number;
+  duration_minutes?: number;
+  metadata?: any;
+}
+
+interface Transcript {
+  id: string;
+  meeting_id: string;
+  room_name: string;
+  speaker: string;
+  speaker_id?: string;
+  message: string;
+  timestamp: string;
+  metadata?: any;
+  embedding?: number[];
+}
+
+interface MeetingSummary {
+  id: string;
+  meeting_id: string;
+  room_name: string;
+  summary: string;
+  key_points: string[];
+  action_items: string[];
+  participants: string[];
+  embedding?: number[];
+}
+
+export class SupabaseContextService {
+  private supabase: SupabaseClient;
+  private activeMeetings: Map<string, string> = new Map(); // roomName -> meetingId
+  private isEnabled: boolean = false;
+
+  constructor() {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.warn('⚠️ [SUPABASE] Missing environment variables - Supabase integration disabled');
+      this.isEnabled = false;
+      // Create a dummy client to avoid null checks everywhere
+      this.supabase = {} as SupabaseClient;
+      return;
+    }
+
+    this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.isEnabled = true;
+    console.log('✅ [SUPABASE] Context service initialized');
+  }
+
+  /**
+   * Start a new meeting session
+   */
+  async startMeeting(roomName: string, metadata?: any): Promise<string | null> {
+    if (!this.isEnabled) return null;
+
+    try {
+      const { data, error } = await this.supabase
+        .from('meetings')
+        .insert({
+          room_name: roomName,
+          started_at: new Date().toISOString(),
+          metadata: metadata || {}
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const meetingId = data.id;
+      this.activeMeetings.set(roomName, meetingId);
+      
+      console.log(`✅ [SUPABASE] Meeting started: ${roomName} (${meetingId})`);
+      return meetingId;
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error starting meeting:', error);
+      return null;
+    }
+  }
+
+  /**
+   * End a meeting and calculate duration
+   */
+  async endMeeting(roomName: string): Promise<void> {
+    if (!this.isEnabled) return;
+
+    try {
+      const meetingId = this.activeMeetings.get(roomName);
+      if (!meetingId) {
+        console.warn(`⚠️ [SUPABASE] No active meeting found for room: ${roomName}`);
+        return;
+      }
+
+      // Get meeting start time to calculate duration
+      const { data: meeting } = await this.supabase
+        .from('meetings')
+        .select('started_at')
+        .eq('id', meetingId)
+        .single();
+
+      const durationMinutes = meeting 
+        ? Math.round((Date.now() - new Date(meeting.started_at).getTime()) / 1000 / 60)
+        : 0;
+
+      const { error } = await this.supabase
+        .from('meetings')
+        .update({
+          ended_at: new Date().toISOString(),
+          duration_minutes: durationMinutes
+        })
+        .eq('id', meetingId);
+
+      if (error) throw error;
+
+      this.activeMeetings.delete(roomName);
+      console.log(`✅ [SUPABASE] Meeting ended: ${roomName} (${durationMinutes} minutes)`);
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error ending meeting:', error);
+    }
+  }
+
+  /**
+   * Add a transcript entry (called on every message)
+   */
+  async addTranscript(
+    roomName: string,
+    speaker: string,
+    message: string,
+    speakerId?: string,
+    metadata?: any
+  ): Promise<void> {
+    if (!this.isEnabled) return;
+
+    try {
+      // Get or create meeting ID
+      let meetingId = this.activeMeetings.get(roomName);
+      
+      if (!meetingId) {
+        // Check if meeting exists in DB
+        const { data: existingMeeting } = await this.supabase
+          .from('meetings')
+          .select('id')
+          .eq('room_name', roomName)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingMeeting) {
+          meetingId = existingMeeting.id;
+          this.activeMeetings.set(roomName, meetingId);
+        } else {
+          // Auto-create meeting if it doesn't exist
+          meetingId = await this.startMeeting(roomName);
+          if (!meetingId) return; // Failed to create meeting
+        }
+      }
+
+      const { error } = await this.supabase
+        .from('transcripts')
+        .insert({
+          meeting_id: meetingId,
+          room_name: roomName,
+          speaker,
+          speaker_id: speakerId,
+          message: message.trim(),
+          timestamp: new Date().toISOString(),
+          metadata: metadata || {}
+        });
+
+      if (error) throw error;
+
+      console.log(`💾 [SUPABASE] Transcript saved: ${speaker} - ${message.substring(0, 50)}...`);
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error saving transcript:', error);
+      // Don't throw - we don't want to break the app if DB save fails
+    }
+  }
+
+  /**
+   * Get all transcripts for a meeting
+   */
+  async getTranscripts(roomName: string, limit: number = 100): Promise<Transcript[]> {
+    if (!this.isEnabled) return [];
+
+    try {
+      const { data, error } = await this.supabase
+        .from('transcripts')
+        .select('*')
+        .eq('room_name', roomName)
+        .order('timestamp', { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error fetching transcripts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get meeting transcript as formatted JSON
+   */
+  async getMeetingTranscriptJSON(roomName: string): Promise<any> {
+    if (!this.isEnabled) {
+      return {
+        error: 'Supabase not configured',
+        meeting: null,
+        transcripts: []
+      };
+    }
+
+    try {
+      const { data: meeting } = await this.supabase
+        .from('meetings')
+        .select('*')
+        .eq('room_name', roomName)
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const transcripts = await this.getTranscripts(roomName);
+
+      return {
+        meeting: meeting ? {
+          id: meeting.id,
+          roomName: meeting.room_name,
+          startedAt: meeting.started_at,
+          endedAt: meeting.ended_at,
+          durationMinutes: meeting.duration_minutes,
+          participantCount: meeting.participant_count
+        } : null,
+        transcripts: transcripts.map(t => ({
+          speaker: t.speaker,
+          message: t.message,
+          timestamp: t.timestamp
+        })),
+        metadata: {
+          totalMessages: transcripts.length,
+          exportedAt: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error exporting transcript JSON:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save meeting summary
+   */
+  async saveMeetingSummary(
+    roomName: string,
+    summary: string,
+    keyPoints: string[] = [],
+    actionItems: string[] = [],
+    participants: string[] = []
+  ): Promise<void> {
+    if (!this.isEnabled) return;
+
+    try {
+      let meetingId = this.activeMeetings.get(roomName);
+      
+      if (!meetingId) {
+        // Check if meeting exists in DB
+        const { data: existingMeeting } = await this.supabase
+          .from('meetings')
+          .select('id')
+          .eq('room_name', roomName)
+          .order('started_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingMeeting) {
+          meetingId = existingMeeting.id;
+        } else {
+          console.warn(`⚠️ [SUPABASE] No meeting found for summary: ${roomName}`);
+          return;
+        }
+      }
+
+      const { error } = await this.supabase
+        .from('meeting_summaries')
+        .insert({
+          meeting_id: meetingId,
+          room_name: roomName,
+          summary,
+          key_points: keyPoints,
+          action_items: actionItems,
+          participants
+        });
+
+      if (error) throw error;
+
+      console.log(`✅ [SUPABASE] Meeting summary saved for: ${roomName}`);
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error saving summary:', error);
+    }
+  }
+
+  /**
+   * Get all meetings
+   */
+  async getAllMeetings(limit: number = 50): Promise<Meeting[]> {
+    if (!this.isEnabled) return [];
+
+    try {
+      const { data, error } = await this.supabase
+        .from('meetings')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error fetching meetings:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Search transcripts by text (basic text search, not vector yet)
+   */
+  async searchTranscripts(query: string, limit: number = 10): Promise<Transcript[]> {
+    if (!this.isEnabled) return [];
+
+    try {
+      const { data, error } = await this.supabase
+        .from('transcripts')
+        .select('*')
+        .textSearch('message', query)
+        .limit(limit);
+
+      if (error) throw error;
+
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error searching transcripts:', error);
+      return [];
+    }
+  }
+}
+
+// Singleton instance
+export const supabaseContextService = new SupabaseContextService();
+

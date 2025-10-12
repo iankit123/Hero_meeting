@@ -1,5 +1,7 @@
 // Simple in-memory context storage for meeting conversations
-// In production, this should be replaced with a database like Redis or MongoDB
+// Now also persists to Supabase when enabled
+
+import { supabaseContextService } from './supabase-context';
 
 interface ConversationEntry {
   id: string;
@@ -12,6 +14,7 @@ interface ConversationEntry {
 class ContextService {
   private conversations: Map<string, ConversationEntry[]> = new Map();
   private maxEntriesPerRoom = 50; // Keep last 50 entries per room
+  private useSupabase = process.env.NEXT_PUBLIC_SUPABASE_URL ? true : false; // Auto-detect Supabase
 
   // Add a conversation entry
   addEntry(roomName: string, speaker: 'user' | 'hero' | 'system', message: string): void {
@@ -36,6 +39,13 @@ class ContextService {
     }
 
     console.log(`📝 [CONTEXT] Added entry for room ${roomName}: ${speaker} - ${message.substring(0, 50)}...`);
+
+    // ALSO save to Supabase (async, non-blocking)
+    if (this.useSupabase) {
+      supabaseContextService.addTranscript(roomName, speaker, message).catch(err => {
+        console.error('⚠️ [CONTEXT] Failed to save to Supabase:', err);
+      });
+    }
   }
 
   // Get conversation history for a room
