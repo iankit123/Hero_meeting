@@ -37,7 +37,7 @@ interface MeetingSummary {
 }
 
 export class SupabaseContextService {
-  private supabase: SupabaseClient;
+  public supabase: SupabaseClient; // Public for vector search queries
   private activeMeetings: Map<string, string> = new Map(); // roomName -> meetingId
   private isEnabled: boolean = false;
 
@@ -173,7 +173,7 @@ export class SupabaseContextService {
       // Normalize org name to lowercase for case-insensitive matching
       const normalizedOrgName = orgName ? orgName.toLowerCase() : undefined;
       
-      const { error } = await this.supabase
+      const { data, error } = await this.supabase
         .from('transcripts')
         .insert({
           meeting_id: meetingId,
@@ -184,11 +184,25 @@ export class SupabaseContextService {
           message: message.trim(),
           timestamp: new Date().toISOString(),
           metadata: metadata || {}
-        });
+        })
+        .select()
+        .single();
 
       if (error) throw error;
 
       console.log(`💾 [SUPABASE] Transcript saved: ${speaker} - ${message.substring(0, 50)}...`);
+
+      // Auto-generate embeddings for new transcripts (async, non-blocking)
+      if (process.env.HUGGINGFACE_API_KEY && data?.id) {
+        // Import at runtime to avoid circular dependencies
+        import('./embeddings-hf').then(({ hfEmbeddingsService }) => {
+          hfEmbeddingsService.embedTranscript(data.id, message.trim()).catch(err => {
+            console.warn('⚠️ [SUPABASE] Failed to auto-embed transcript:', err);
+          });
+        }).catch(err => {
+          console.warn('⚠️ [SUPABASE] Failed to load embeddings service:', err);
+        });
+      }
     } catch (error) {
       console.error('❌ [SUPABASE] Error saving transcript:', error);
       // Don't throw - we don't want to break the app if DB save fails
