@@ -137,13 +137,16 @@ CRITICAL RULES:
 6. Be precise and factual - avoid speculation
 7. Pay attention to meeting dates and participants - don't assume temporal relationships
 8. Always respond as Hero using first person ("I", "me", "my")
-9. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
+9. Keep responses concise and use bullet points for multiple items
+10. Only reference meetings that had substantive discussions, not just questions
+11. Use simplified date format (e.g., "October 12" instead of "Sunday, October 12, 2025")
+12. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
 
 Context: ${enhancedContext || 'NO CONTEXT AVAILABLE'}
 
 Question: ${finalQuestion}
 
-Answer as Hero using first person, based ONLY on the provided context. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
+Answer as Hero using first person, based ONLY on the provided context. Keep responses concise and use bullet points when listing multiple items. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
 
       const llmResponse = await llmService.generateResponse(antiHallucinationPrompt, '');
       

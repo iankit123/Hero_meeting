@@ -76,15 +76,22 @@ class MeetingContextService {
         
         summaryResults.forEach((meeting: any, idx: number) => {
           const similarity = (meeting.similarity * 100).toFixed(0);
-          const date = new Date(meeting.started_at).toLocaleDateString();
           const formattedDate = new Date(meeting.started_at).toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
             month: 'long', 
             day: 'numeric' 
           });
-          context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
-          context += `   Summary: ${meeting.summary}\n`;
+          
+          // Skip meetings that only contain questions (no substantive discussion)
+          const summary = meeting.summary?.toLowerCase() || '';
+          const isOnlyQuestions = summary.includes('asked') && 
+            (summary.includes('what') || summary.includes('how') || summary.includes('when') || summary.includes('where')) &&
+            !summary.includes('discussed') && !summary.includes('reported') && !summary.includes('suggested') && 
+            !summary.includes('agreed') && !summary.includes('decided') && !summary.includes('proposed');
+          
+          if (!isOnlyQuestions) {
+            context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
+            context += `   Summary: ${meeting.summary}\n`;
+          }
         });
         
         // TIER 2: Get detailed transcripts from the top relevant meetings
@@ -114,8 +121,6 @@ class MeetingContextService {
               relevantTranscripts.forEach((result: any, idx: number) => {
                 const similarity = (result.similarity * 100).toFixed(0);
                 const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
                   month: 'long', 
                   day: 'numeric' 
                 });
@@ -163,15 +168,22 @@ class MeetingContextService {
       transcriptResults.forEach((result: any, idx: number) => {
         const similarity = (result.similarity * 100).toFixed(0);
         const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
           month: 'long', 
           day: 'numeric' 
         });
         const speaker = result.speaker || 'Unknown';
         
-        context += `\n${idx + 1}. [${similarity}% relevant] ${speaker}: "${result.message}"\n`;
-        context += `   (From meeting on ${formattedDate})\n`;
+        // Skip messages that are only questions without substantive content
+        const message = result.message?.toLowerCase() || '';
+        const isOnlyQuestion = message.includes('?') && 
+          (message.includes('what') || message.includes('how') || message.includes('when') || message.includes('where') || message.includes('do you')) &&
+          !message.includes('discussed') && !message.includes('reported') && !message.includes('suggested') && 
+          !message.includes('agreed') && !message.includes('decided') && !message.includes('proposed');
+        
+        if (!isOnlyQuestion) {
+          context += `\n${idx + 1}. [${similarity}% relevant] ${speaker}: "${result.message}"\n`;
+          context += `   (From meeting on ${formattedDate})\n`;
+        }
       });
 
       return context;
