@@ -65,11 +65,14 @@ export class SupabaseContextService {
     if (!this.isEnabled) return null;
 
     try {
+      // Normalize org name to lowercase for case-insensitive matching
+      const normalizedOrgName = orgName ? orgName.toLowerCase() : undefined;
+      
       const { data, error} = await this.supabase
         .from('meetings')
         .insert({
           room_name: roomName,
-          org_name: orgName,
+          org_name: normalizedOrgName,
           started_at: new Date().toISOString(),
           metadata: metadata || {}
         })
@@ -81,7 +84,7 @@ export class SupabaseContextService {
       const meetingId = data.id;
       this.activeMeetings.set(roomName, meetingId);
       
-      console.log(`✅ [SUPABASE] Meeting started: ${roomName} (${meetingId}) for org: ${orgName}`);
+      console.log(`✅ [SUPABASE] Meeting started: ${roomName} (${meetingId}) for org: ${orgName} (normalized: ${normalizedOrgName})`);
       return meetingId;
     } catch (error) {
       console.error('❌ [SUPABASE] Error starting meeting:', error);
@@ -167,12 +170,15 @@ export class SupabaseContextService {
         }
       }
 
+      // Normalize org name to lowercase for case-insensitive matching
+      const normalizedOrgName = orgName ? orgName.toLowerCase() : undefined;
+      
       const { error } = await this.supabase
         .from('transcripts')
         .insert({
           meeting_id: meetingId,
           room_name: roomName,
-          org_name: orgName,
+          org_name: normalizedOrgName,
           speaker,
           speaker_id: speakerId,
           message: message.trim(),
@@ -200,14 +206,39 @@ export class SupabaseContextService {
         .from('transcripts')
         .select('*')
         .eq('room_name', roomName)
-        .order('timestamp', { ascending: true })
+        .order('created_at', { ascending: true })
         .limit(limit);
 
       if (error) throw error;
 
+      console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} transcripts for room: ${roomName}`);
       return data || [];
     } catch (error) {
       console.error('❌ [SUPABASE] Error fetching transcripts:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get all transcripts for a meeting by meeting ID
+   */
+  async getTranscriptsByMeeting(meetingId: string, limit: number = 100): Promise<Transcript[]> {
+    if (!this.isEnabled) return [];
+
+    try {
+      const { data, error } = await this.supabase
+        .from('transcripts')
+        .select('*')
+        .eq('meeting_id', meetingId)
+        .order('created_at', { ascending: true })
+        .limit(limit);
+
+      if (error) throw error;
+
+      console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} transcripts for meeting: ${meetingId}`);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error fetching transcripts by meeting:', error);
       return [];
     }
   }
@@ -341,16 +372,19 @@ export class SupabaseContextService {
     if (!this.isEnabled) return [];
 
     try {
+      // Normalize org name to lowercase for case-insensitive matching
+      const normalizedOrgName = orgName.toLowerCase();
+      
       const { data, error } = await this.supabase
         .from('meetings')
         .select('*')
-        .eq('org_name', orgName)
+        .eq('org_name', normalizedOrgName)
         .order('started_at', { ascending: false })
         .limit(limit);
 
       if (error) throw error;
 
-      console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} meetings for org: ${orgName}`);
+      console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} meetings for org: ${orgName} (normalized: ${normalizedOrgName})`);
       return data || [];
     } catch (error) {
       console.error('❌ [SUPABASE] Error fetching meetings for org:', error);

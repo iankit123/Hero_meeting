@@ -7,6 +7,17 @@ export default function Meeting() {
   const { roomName } = router.query;
   const [isReady, setIsReady] = useState(false);
 
+  // Prevent body scroll on meeting pages
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = '100vh';
+    
+    return () => {
+      document.body.style.overflow = 'auto';
+      document.body.style.height = 'auto';
+    };
+  }, []);
+
   useEffect(() => {
     if (router.isReady && roomName) {
       setIsReady(true);

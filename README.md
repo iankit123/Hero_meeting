@@ -301,9 +301,7 @@ For support, please open an issue on GitHub or contact the development team.
 
 - send only after 2 sec pause
 
-
 - Data storage
-
 
 - Ask name of participant in a in-app popup, before enteting meeting room. This should be applicable for all users.. weather meeting creator or someone joining. Once user enter name, then he should enter the meeting room.
 - When showing participants in the meeting room, show this names as the participants. Use these names to show in transcripts, and everywhere else where name is shown, inlcuding the database

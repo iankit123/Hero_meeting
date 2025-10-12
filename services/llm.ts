@@ -37,31 +37,12 @@ export class GeminiLLMService implements LLMService {
     context?: string,
   ): Promise<LLMResponse> {
     try {
-      // Previous meeting context
-      const previousMeetingNotes = `
-# Previous Meeting Notes - Payment Failures Discussion
-**Date:** 20th September 2025  
-**Participants:** Matt, Tom  
-
-**Detailed Discussion:**
-- **Matt:** "Hey Tom, I've noticed some payment failures in our dashboard over the last few days. The success rate dropped from 96% to around 82%."
-- **Tom:** "Yeah, I checked this too. It seems to be happening mostly with credit card payments, especially through one of our gateways."
-- **Matt:** "That could explain why overall conversions dipped. If payments are failing at the last step, users might be abandoning before completion."
-- **Tom:** "Exactly. We'll need to check with the payment provider's API logs. Maybe a timeout or validation issue."
-- **Matt:** "Let's flag this in the metrics and track recovery over the next few days. If this continues, we should consider fallback routing for that provider."
-
-**Summary:** Payment failures with one gateway caused drop-offs in final purchase stage. Team will review logs and track success rate improvements.
-`;
-
       const fullPrompt = context
       ? `You are **Hero**, an intelligent AI meeting attendee. 
       You are present in this meeting to actively listen, understand the discussion, 
       and provide clear, concise, and context-aware answers when addressed.
       
-      Previous Meeting Context:
-      ${previousMeetingNotes}
-      
-      Current Meeting Context:
+      Meeting Context:
       ${context}
       
       The participant just asked you:
@@ -69,9 +50,8 @@ export class GeminiLLMService implements LLMService {
       
       Guidelines for your response:
       - Speak as if you are an active participant in the meeting (natural, conversational, and professional).
-      - Use both the previous meeting context and current meeting context above to ground your answer. 
-      - When referencing previous meetings, mention specific participants and what they said (e.g., "In the meeting between Matt and Tom, Matt mentioned that...").
-      - Reference relevant information from previous meetings when applicable, always attributing statements to specific participants.
+      - Use the meeting context above to ground your answer. If relevant past meeting information is provided in the context, reference it naturally.
+      - When referencing information, mention specific participants and what they said (e.g., "Matt mentioned that...").
       - If the context does not contain enough details, make a reasonable, helpful suggestion without inventing irrelevant facts. Keep it short as 1 line if need to ask just for clarification.
       - Keep answers focused and concise (1–3 sentences is usually enough).
       - If asked for explanation, provide structured clarity (e.g., short bullets or examples).

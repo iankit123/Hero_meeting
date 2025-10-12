@@ -9,11 +9,12 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings', onTabChange }) => {
   const [orgName, setOrgName] = useState<string>('');
+  const [orgDisplayName, setOrgDisplayName] = useState<string>('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    // Get org name from localStorage
+    // Get org name from localStorage (normalized lowercase)
     const storedOrgName = localStorage.getItem('hero_meeting_org');
     if (!storedOrgName) {
       // Redirect to org entry if no org set
@@ -21,6 +22,10 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
       return;
     }
     setOrgName(storedOrgName);
+    
+    // Get display name (original case) or fall back to normalized
+    const displayName = localStorage.getItem('hero_meeting_org_display') || storedOrgName;
+    setOrgDisplayName(displayName);
   }, [router]);
 
   const handleTabClick = (tab: 'meetings' | 'past-meetings') => {
@@ -31,6 +36,7 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
 
   const handleSwitchOrg = () => {
     localStorage.removeItem('hero_meeting_org');
+    localStorage.removeItem('hero_meeting_org_display');
     router.push('/org-entry');
   };
 
@@ -157,7 +163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
               Organization
             </div>
             <div style={{ fontSize: '14px', fontWeight: '600', color: 'white', marginBottom: '8px' }}>
-              {orgName}
+              {orgDisplayName}
             </div>
             <button
               onClick={handleSwitchOrg}

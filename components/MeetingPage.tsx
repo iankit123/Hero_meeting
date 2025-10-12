@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, TrackPublication, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
+import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, TrackPublication, createLocalVideoTrack, createLocalAudioTrack, LocalTrack, Participant } from 'livekit-client';
 import ChatPanel, { ChatMessage } from './ChatPanel';
 import { createSTTService, STTService, STTResult } from '../services/stt';
 import NameInputModal from './NameInputModal';
+import ParticipantTile from './ParticipantTile';
 
 interface MeetingPageProps {
   roomName: string;
@@ -28,6 +29,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [showNameModal, setShowNameModal] = useState(true);
   const [participantName, setParticipantName] = useState<string>('');
   const [orgName, setOrgName] = useState<string>('');
+  const [audioLevels, setAudioLevels] = useState<Map<string, number>>(new Map());
+  const [isHeroSpeaking, setIsHeroSpeaking] = useState(false);
   const videoRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -173,6 +176,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
       // STEP 4: Set up comprehensive event listeners with detailed logging
       setupRoomEventListeners(newRoom);
+      setupAudioLevelMonitoring(newRoom);
 
       // STEP 5: PRE-CREATE tracks before connection
       console.log('🎥 [TRACKS] Pre-creating media tracks...');
@@ -336,6 +340,74 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
 
+  // Calculate grid layout based on participant count
+  const getGridLayout = (participantCount: number) => {
+    if (participantCount === 1) return { cols: 1, rows: 1 };
+    if (participantCount === 2) return { cols: 2, rows: 1 };
+    if (participantCount <= 4) return { cols: 2, rows: 2 };
+    if (participantCount <= 6) return { cols: 3, rows: 2 };
+    if (participantCount <= 9) return { cols: 3, rows: 3 };
+    return { cols: 4, rows: Math.ceil(participantCount / 4) };
+  };
+
+  // Setup audio level monitoring for all participants
+  const setupAudioLevelMonitoring = (newRoom: Room) => {
+    console.log('🎵 [AUDIO-LEVEL] Setting up audio level monitoring...');
+    
+    const monitorParticipant = (participant: Participant) => {
+      // Listen for audio track publications
+      const updateAudioLevel = () => {
+        const audioTracks = Array.from(participant.audioTrackPublications.values());
+        if (audioTracks.length > 0 && audioTracks[0].track) {
+          // Use a simple interval to check speaking status
+          const interval = setInterval(() => {
+            const isSpeaking = !audioTracks[0].isMuted && audioTracks[0].track;
+            const level = isSpeaking ? 0.5 : 0; // Simple binary level
+            
+            setAudioLevels(prev => {
+              const updated = new Map(prev);
+              updated.set(participant.identity, level);
+              return updated;
+            });
+          }, 200);
+
+          // Store interval for cleanup
+          (participant as any).audioMonitorInterval = interval;
+        }
+      };
+
+      // Initial check
+      updateAudioLevel();
+
+      // Monitor track published events
+      participant.on(RoomEvent.TrackPublished, () => {
+        updateAudioLevel();
+      });
+    };
+
+    // Monitor local participant
+    monitorParticipant(newRoom.localParticipant);
+
+    // Monitor existing remote participants
+    newRoom.remoteParticipants.forEach(participant => {
+      monitorParticipant(participant);
+    });
+
+    // Monitor new participants that join
+    newRoom.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
+      monitorParticipant(participant);
+    });
+
+    // Cleanup on disconnect
+    newRoom.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+      if ((participant as any).audioMonitorInterval) {
+        clearInterval((participant as any).audioMonitorInterval);
+      }
+    });
+
+    console.log('✅ [AUDIO-LEVEL] Audio level monitoring setup complete');
+  };
+
   const setupRoomEventListeners = (newRoom: Room) => {
     console.log('🎧 [EVENTS] Setting up room event listeners...');
     
@@ -353,6 +425,26 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             timestamp: data.timestamp,
             isHero: true
           });
+          
+          // Set Hero speaking state
+          setIsHeroSpeaking(true);
+          setAudioLevels(prev => {
+            const updated = new Map(prev);
+            updated.set('hero-bot', 0.8);
+            return updated;
+          });
+          
+          // Estimate speaking duration (characters / 15 = seconds, rough estimate)
+          const estimatedDuration = Math.max(3000, (data.text.length / 15) * 1000);
+          
+          setTimeout(() => {
+            setIsHeroSpeaking(false);
+            setAudioLevels(prev => {
+              const updated = new Map(prev);
+              updated.set('hero-bot', 0);
+              return updated;
+            });
+          }, estimatedDuration);
         } else if (data.type === 'transcript') {
           console.log('📝 [TRANSCRIPT] Broadcasting transcript to all participants');
           addTranscript({
@@ -973,11 +1065,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           speech: speechText,
-          speaker: 'user',
+          speaker: participantName || 'user',
           orgName: orgName || undefined
         }),
       });
-      console.log('📝 [CONTEXT] Stored speech in context:', speechText.substring(0, 50) + '...');
+      console.log(`📝 [CONTEXT] Stored speech in context for ${participantName}:`, speechText.substring(0, 50) + '...');
     } catch (error) {
       console.warn('⚠️ [CONTEXT] Failed to store speech in context:', error);
     }
@@ -1209,7 +1301,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           message: transcript,
-          ttsProvider: ttsProvider
+          ttsProvider: ttsProvider,
+          orgName: orgName
         }),
       });
       
@@ -1436,7 +1529,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           message,
-          ttsProvider: ttsProvider
+          ttsProvider: ttsProvider,
+          orgName: orgName
         }),
       });
 
@@ -1736,7 +1830,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     console.log(`👤 [NAME] Participant name submitted: ${name}`);
     setParticipantName(name);
     
-    // Get org name from localStorage
+    // Get org name from localStorage (already normalized to lowercase)
     const storedOrgName = localStorage.getItem('hero_meeting_org') || '';
     setOrgName(storedOrgName);
     console.log(`🏢 [ORG] Organization: ${storedOrgName}`);
@@ -1905,15 +1999,16 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           </div>
         </div>
 
-        {/* Main Video Content */}
-            <div style={{
+        {/* Main Video Content - Grid Layout */}
+        <div style={{
           position: 'relative',
           height: '100%',
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          padding: '80px 20px 100px 20px'
         }}>
           {/* Background Pattern */}
           <div style={{
@@ -1927,194 +2022,135 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               radial-gradient(circle at 75% 75%, rgba(16, 185, 129, 0.1) 0%, transparent 50%),
               radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.05) 0%, transparent 50%)
             `,
-            opacity: 0.6
+            opacity: 0.6,
+            zIndex: 0
           }}></div>
           
-          {participants.length === 0 && (
-          <div style={{ 
-            textAlign: 'center',
-            position: 'relative',
-            zIndex: 2,
-            maxWidth: '400px',
-            padding: '40px'
-          }}>
-            <div style={{
-              width: '120px',
-              height: '120px',
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 32px auto',
-              border: '2px solid rgba(59, 130, 246, 0.3)',
-              backdropFilter: 'blur(10px)',
-              boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
-            }}>
-              <svg fill="#60a5fa" version="1.1" xmlns="http://www.w3.org/2000/svg" 
-                width="64" height="64" viewBox="0 0 612 612" xmlSpace="preserve">
-                <g>
-                  <path d="M306,317.657c46.677,0,84.514-37.838,84.514-84.514S352.677,148.629,306,148.629c-46.676,0-84.514,37.838-84.514,84.514
-                    S259.324,317.657,306,317.657z M350.041,262.785c-4.179,13.816-22.078,24.202-43.529,24.202c-21.453,0-39.352-10.386-43.53-24.202
-                    H350.041z M448.225,405.086v27.858c0,4.129-2.752,8.928-6.524,10.606c-14.62,6.506-54.354,19.82-135.844,19.82
-                    c-81.489,0-121.008-13.315-135.628-19.82c-3.773-1.679-6.453-6.478-6.453-10.606v-27.858c0-41.747,31.497-76.379,72.054-81.018
-                    c1.232-0.141,2.917,0.387,3.921,1.115c18.7,13.537,41.522,21.617,66.322,21.617c24.799,0,47.657-8.08,66.356-21.617
-                    c1.005-0.728,2.526-1.255,3.759-1.115C416.746,328.707,448.225,363.339,448.225,405.086z M612,329.552v16.487
-                    c0,2.443-1.799,5.284-4.031,6.277c-8.653,3.851-32.255,11.731-80.482,11.731c-48.229,0-73.514-7.881-82.166-11.731
-                    c-2.233-0.992-5.715-3.833-5.715-6.277v-16.487c0-24.707,20.494-45.204,44.498-47.949c0.729-0.083,2.652,0.229,3.247,0.66
-                    c11.067,8.012,25.038,12.794,39.715,12.794c14.678,0,28.438-4.782,39.505-12.794c0.596-0.431,1.782-0.742,2.511-0.66
-                    C593.083,284.349,612,304.845,612,329.552z M166.68,352.317c-8.653,3.851-33.095,11.73-81.324,11.73
-                    c-48.229,0-72.25-7.88-80.903-11.73C2.219,351.324,0,348.483,0,346.04v-16.487c0-24.707,18.812-45.204,42.815-47.949
-                    c0.729-0.083,1.811,0.229,2.405,0.659c11.067,8.013,24.617,12.795,39.293,12.795c14.677,0,28.227-4.782,39.294-12.795
-                    c0.594-0.431,3.358-0.742,4.088-0.659c24.003,2.746,44.498,23.242,44.498,47.949v16.487
-                    C172.395,348.483,168.913,351.324,166.68,352.317z M84.514,177.771c-27.624,0-50.019,22.394-50.019,50.019
-                    c0,27.625,22.394,50.019,50.019,50.019s50.019-22.394,50.019-50.019S112.139,177.771,84.514,177.771z M84.514,258.22
-                    c-12.956,0-23.766-6.272-26.29-14.617h52.581C108.281,251.948,97.471,258.22,84.514,258.22z M527.486,177.771
-                    c-27.625,0-50.02,22.394-50.02,50.019c0,27.625,22.395,50.019,50.02,50.019c27.624,0,50.019-22.394,50.019-50.019
-                    S555.11,177.771,527.486,177.771z M527.485,258.22c-12.956,0-23.767-6.272-26.29-14.617h52.58
-                    C551.252,251.948,540.441,258.22,527.485,258.22z"/>
-                </g>
-              </svg>
-            </div>
-            <h2 style={{ 
-              fontSize: '28px', 
-              fontWeight: '700', 
-              color: 'white', 
-              marginBottom: '12px',
-              letterSpacing: '-0.025em',
-              background: 'linear-gradient(135deg, #ffffff 0%, #94a3b8 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}>
-              Waiting for others to join...
-            </h2>
-            <p style={{ 
-              fontSize: '16px', 
-              color: '#94a3b8',
-              fontWeight: '500',
-              lineHeight: '1.5'
-            }}>
-              Your meeting room is ready and secure
-            </p>
-          </div>
-          )}
-        </div>
+          {/* Participants Grid */}
+          {room && (() => {
+            // Create virtual Hero participant
+            const heroParticipant = {
+              identity: 'hero-bot',
+              name: 'Hero',
+              trackPublications: new Map(),
+              videoTrackPublications: new Map(),
+              audioTrackPublications: new Map(),
+              on: () => {},
+              off: () => {}
+            } as any;
 
-
-        {/* Video Preview - User's own camera */}
-        <div className="local-video-preview" style={{
-          position: 'absolute',
-          bottom: '24px',
-          left: '24px',
-          width: '280px',
-          height: '210px',
-          borderRadius: '20px',
-          overflow: 'hidden',
-          border: '3px solid rgba(59, 130, 246, 0.4)',
-          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.5)',
-          backdropFilter: 'blur(15px)',
-          zIndex: 20
-        }}>
-          {/* Loading skeleton for video */}
-          {!localVideoTrack && (
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              background: 'linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%)',
-              backgroundSize: '200% 100%',
-              animation: 'shimmer 1.5s infinite',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
+            // Include Hero as a virtual participant
+            const allParticipants = [room.localParticipant, heroParticipant, ...participants];
+            const gridLayout = getGridLayout(allParticipants.length);
+            
+            // Set default audio level for Hero (listening state)
+            if (!audioLevels.has('hero-bot')) {
+              setTimeout(() => {
+                setAudioLevels(prev => {
+                  const updated = new Map(prev);
+                  if (!updated.has('hero-bot')) {
+                    updated.set('hero-bot', 0.1); // Low level for listening
+                  }
+                  return updated;
+                });
+              }, 100);
+            }
+            
+            return (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${gridLayout.cols}, 1fr)`,
+                gridTemplateRows: `repeat(${gridLayout.rows}, 1fr)`,
+                gap: '16px',
+                width: '100%',
+                height: '100%',
+                maxWidth: '1600px',
+                maxHeight: '900px',
+                position: 'relative',
+                zIndex: 1
+              }}>
+                {allParticipants.map((participant) => (
+                  <ParticipantTile
+                    key={participant.identity}
+                    participant={participant}
+                    isLocal={participant === room.localParticipant}
+                    audioLevel={audioLevels.get(participant.identity) || 0}
+                  />
+                ))}
+              </div>
+            );
+          })()}
+          
+          {/* Waiting message when no participants */}
+          {participants.length === 0 && !room && (
+            <div style={{ 
+              textAlign: 'center',
+              position: 'relative',
+              zIndex: 2,
+              maxWidth: '400px',
+              padding: '40px'
             }}>
               <div style={{
-                width: '48px',
-                height: '48px',
-                border: '3px solid rgba(59, 130, 246, 0.3)',
-                borderTopColor: '#3b82f6',
+                width: '120px',
+                height: '120px',
+                background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)',
                 borderRadius: '50%',
-                animation: 'spin 1s linear infinite'
-              }}></div>
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 32px auto',
+                border: '2px solid rgba(59, 130, 246, 0.3)',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)'
+              }}>
+                <svg fill="#60a5fa" version="1.1" xmlns="http://www.w3.org/2000/svg" 
+                  width="64" height="64" viewBox="0 0 612 612" xmlSpace="preserve">
+                  <g>
+                    <path d="M306,317.657c46.677,0,84.514-37.838,84.514-84.514S352.677,148.629,306,148.629c-46.676,0-84.514,37.838-84.514,84.514
+                      S259.324,317.657,306,317.657z M350.041,262.785c-4.179,13.816-22.078,24.202-43.529,24.202c-21.453,0-39.352-10.386-43.53-24.202
+                      H350.041z M448.225,405.086v27.858c0,4.129-2.752,8.928-6.524,10.606c-14.62,6.506-54.354,19.82-135.844,19.82
+                      c-81.489,0-121.008-13.315-135.628-19.82c-3.773-1.679-6.453-6.478-6.453-10.606v-27.858c0-41.747,31.497-76.379,72.054-81.018
+                      c1.232-0.141,2.917,0.387,3.921,1.115c18.7,13.537,41.522,21.617,66.322,21.617c24.799,0,47.657-8.08,66.356-21.617
+                      c1.005-0.728,2.526-1.255,3.759-1.115C416.746,328.707,448.225,363.339,448.225,405.086z M612,329.552v16.487
+                      c0,2.443-1.799,5.284-4.031,6.277c-8.653,3.851-32.255,11.731-80.482,11.731c-48.229,0-73.514-7.881-82.166-11.731
+                      c-2.233-0.992-5.715-3.833-5.715-6.277v-16.487c0-24.707,20.494-45.204,44.498-47.949c0.729-0.083,2.652,0.229,3.247,0.66
+                      c11.067,8.012,25.038,12.794,39.715,12.794c14.678,0,28.438-4.782,39.505-12.794c0.596-0.431,1.782-0.742,2.511-0.66
+                      C593.083,284.349,612,304.845,612,329.552z M166.68,352.317c-8.653,3.851-33.095,11.73-81.324,11.73
+                      c-48.229,0-72.25-7.88-80.903-11.73C2.219,351.324,0,348.483,0,346.04v-16.487c0-24.707,18.812-45.204,42.815-47.949
+                      c0.729-0.083,1.811,0.229,2.405,0.659c11.067,8.013,24.617,12.795,39.293,12.795c14.677,0,28.227-4.782,39.294-12.795
+                      c0.594-0.431,3.358-0.742,4.088-0.659c24.003,2.746,44.498,23.242,44.498,47.949v16.487
+                      C172.395,348.483,168.913,351.324,166.68,352.317z M84.514,177.771c-27.624,0-50.019,22.394-50.019,50.019
+                      c0,27.625,22.394,50.019,50.019,50.019s50.019-22.394,50.019-50.019S112.139,177.771,84.514,177.771z M84.514,258.22
+                      c-12.956,0-23.766-6.272-26.29-14.617h52.581C108.281,251.948,97.471,258.22,84.514,258.22z M527.486,177.771
+                      c-27.625,0-50.02,22.394-50.02,50.019c0,27.625,22.395,50.019,50.02,50.019c27.624,0,50.019-22.394,50.019-50.019
+                      S555.11,177.771,527.486,177.771z M527.485,258.22c-12.956,0-23.767-6.272-26.29-14.617h52.58
+                      C551.252,251.948,540.441,258.22,527.485,258.22z"/>
+                  </g>
+                </svg>
+              </div>
+              <h2 style={{ 
+                fontSize: '28px', 
+                fontWeight: '700', 
+                color: 'white', 
+                marginBottom: '12px',
+                letterSpacing: '-0.025em',
+                background: 'linear-gradient(135deg, #ffffff 0%, #94a3b8 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                Connecting...
+              </h2>
+              <p style={{ 
+                fontSize: '16px', 
+                color: '#94a3b8',
+                fontWeight: '500',
+                lineHeight: '1.5'
+              }}>
+                Setting up your meeting room
+              </p>
             </div>
           )}
-          <video 
-            ref={localVideoRef}
-            autoPlay 
-            muted 
-            playsInline
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: 'cover',
-              backgroundColor: 'black'
-            }}
-            onLoadedMetadata={() => {
-              console.log('🎥 [VIDEO] Local video metadata loaded - stream should be visible');
-            }}
-            onCanPlay={() => {
-              console.log('🎥 [VIDEO] Local video can play - stream is ready');
-            }}
-            onError={(e) => {
-              console.error('🎥 [VIDEO] Local video error:', e);
-              console.log('🎥 [VIDEO] Video element current src:', localVideoRef.current?.src);
-              console.log('🎥 [VIDEO] Video element srcObject:', localVideoRef.current?.srcObject);
-            }}
-          />
-          <div style={{
-            position: 'absolute',
-            bottom: '12px',
-            left: '12px',
-            background: 'linear-gradient(135deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.6) 100%)',
-            color: 'white',
-            padding: '6px 12px',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: '600',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)'
-          }}>
-            You
-          </div>
-          <div style={{
-            position: 'absolute',
-            top: '12px',
-            right: '12px',
-            display: 'flex',
-            gap: '6px'
-          }}>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              backgroundColor: isVideoEnabled ? '#22c55e' : '#ef4444',
-              borderRadius: '50%',
-              border: '2px solid rgba(0, 0, 0, 0.3)'
-            }}></div>
-            <div style={{
-              width: '8px',
-              height: '8px',
-              backgroundColor: isAudioEnabled ? '#22c55e' : '#ef4444',
-              borderRadius: '50%',
-              border: '2px solid rgba(0, 0, 0, 0.3)'
-            }}></div>
-          </div>
-        </div>
-        
-        {/* Remote participants video area */}
-        <div ref={videoRef} style={{
-          position: 'absolute',
-          top: '80px',
-          left: '20px',
-          right: '20px',
-          bottom: '200px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '16px'
-        }}>
-          {/* Remote participant videos will be attached here */}
         </div>
 
         {/* Controls */}
@@ -2308,7 +2344,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               fontSize: '12px',
               fontWeight: '600'
             }}>
-              {room ? room.numParticipants : participants.length + 1}
+              {room ? (participants.filter(p => p.identity !== 'hero-bot').length + 2) : 2}
             </div>
           </div>
           
@@ -2386,30 +2422,85 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </div>
           </div>
           
-          {/* Remote Participants */}
-          {participants.map((participant, index) => (
+          {/* Hero AI - Always shown as default participant */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            padding: '16px',
+            background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%)',
+            borderRadius: '12px',
+            marginBottom: '12px',
+            border: '1px solid rgba(139, 92, 246, 0.2)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.2s ease'
+          }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '16px',
+              fontWeight: '700',
+              color: 'white',
+              boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)'
+            }}>
+              🤖
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ 
+                color: 'white', 
+                fontSize: '15px', 
+                fontWeight: '600',
+                marginBottom: '4px'
+              }}>
+                Hero AI
+              </div>
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                fontSize: '12px',
+                color: '#94a3b8'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  <div style={{
+                    width: '6px',
+                    height: '6px',
+                    backgroundColor: '#22c55e',
+                    borderRadius: '50%'
+                  }}></div>
+                  Active
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Other Remote Participants */}
+          {participants.filter(p => p.identity !== 'hero-bot').map((participant, index) => (
             <div key={participant.identity} style={{
               display: 'flex',
               alignItems: 'center',
               gap: '16px',
               padding: '16px',
-              background: participant.identity === 'hero-bot' 
-                ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%)'
-                : 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%)',
+              background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%)',
               borderRadius: '12px',
               marginBottom: '12px',
-              border: participant.identity === 'hero-bot' 
-                ? '1px solid rgba(59, 130, 246, 0.2)'
-                : '1px solid rgba(245, 158, 11, 0.2)',
+              border: '1px solid rgba(245, 158, 11, 0.2)',
               backdropFilter: 'blur(10px)',
               transition: 'all 0.2s ease'
             }}>
               <div style={{
                 width: '40px',
                 height: '40px',
-                background: participant.identity === 'hero-bot' 
-                  ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-                  : 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
                 borderRadius: '50%',
                 display: 'flex',
                 alignItems: 'center',
@@ -2417,11 +2508,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 fontSize: '16px',
                 fontWeight: '700',
                 color: 'white',
-                boxShadow: participant.identity === 'hero-bot' 
-                  ? '0 4px 12px rgba(59, 130, 246, 0.3)'
-                  : '0 4px 12px rgba(245, 158, 11, 0.3)'
+                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
               }}>
-                {participant.identity === 'hero-bot' ? '🤖' : participant.identity.charAt(0).toUpperCase()}
+                {participant.identity.charAt(0).toUpperCase()}
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ 
@@ -2430,14 +2519,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                   fontWeight: '600',
                   marginBottom: '4px'
                 }}>
-                  {participant.identity === 'hero-bot' ? 'Hero AI Assistant' : `Participant ${index + 1}`}
+                  {participant.name || `Participant ${index + 1}`}
                 </div>
                 <div style={{ 
                   color: '#94a3b8', 
                   fontSize: '12px',
                   fontWeight: '500'
                 }}>
-                  {participant.identity === 'hero-bot' ? 'AI Assistant' : 'Online'}
+                  Online
                 </div>
               </div>
             </div>

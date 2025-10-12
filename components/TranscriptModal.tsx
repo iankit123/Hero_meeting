@@ -38,6 +38,10 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
     if (!speaker) return 'Unknown Speaker';
     if (speaker === 'hero-bot' || speaker.toLowerCase().includes('hero')) return 'Hero AI';
     
+    // Handle generic 'user' or 'system' labels
+    if (speaker === 'user') return 'Participant';
+    if (speaker === 'system') return 'System';
+    
     // Extract name from identity format: "Name-uuid"
     const nameMatch = speaker.match(/^(.+?)-[a-f0-9]{8}$/i);
     if (nameMatch) {

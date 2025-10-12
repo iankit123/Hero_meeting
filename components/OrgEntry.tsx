@@ -30,10 +30,14 @@ const OrgEntry: React.FC = () => {
     
     setIsLoading(true);
     
-    // Save to localStorage
-    localStorage.setItem('hero_meeting_org', trimmedOrgName);
+    // Normalize org name to lowercase for case-insensitive matching
+    const normalizedOrgName = trimmedOrgName.toLowerCase();
     
-    console.log(`🏢 [ORG] Organization set: ${trimmedOrgName}`);
+    // Save to localStorage (normalized for consistency)
+    localStorage.setItem('hero_meeting_org', normalizedOrgName);
+    localStorage.setItem('hero_meeting_org_display', trimmedOrgName); // Keep original for display
+    
+    console.log(`🏢 [ORG] Organization set: ${trimmedOrgName} (normalized: ${normalizedOrgName})`);
     
     // Navigate to dashboard
     router.push('/dashboard');

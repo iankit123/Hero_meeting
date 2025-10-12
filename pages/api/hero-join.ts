@@ -3,6 +3,7 @@ import { AccessToken } from 'livekit-server-sdk';
 import { createLLMService } from '../../services/llm';
 import { createTTSService } from '../../services/tts';
 import { contextService } from '../../services/context';
+import { meetingContextService } from '../../services/meeting-context';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -49,8 +50,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📥 [API] Received message:', message);
       console.log('📝 [API] Context provided:', context?.substring(0, 100) + '...');
       
-      // Store the user message in context
-      contextService.addEntry(roomName, 'user', message);
+      // Note: User message is already stored by frontend via /api/store-speech
+      // So we don't need to store it again here to avoid duplicates
+      const { orgName } = req.body;
       
       // Process user message and generate Hero response
       const llmService = createLLMService();
@@ -91,10 +93,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📚 [CONTEXT] Summary:', contextSummary);
       console.log('📚 [CONTEXT] Recent messages:', conversationContext.substring(0, 200) + '...');
       
+      // Get relevant past meeting context if org name is provided
+      let pastMeetingContext = '';
+      if (orgName) {
+        console.log(`🔍 [PAST-MEETINGS] Retrieving past meetings for org: ${orgName}`);
+        pastMeetingContext = await meetingContextService.getRelevantContext(orgName, finalQuestion, 2);
+        if (pastMeetingContext) {
+          console.log(`✅ [PAST-MEETINGS] Retrieved past meeting context (${pastMeetingContext.length} chars)`);
+        } else {
+          console.log(`ℹ️ [PAST-MEETINGS] No relevant past meetings found`);
+        }
+      }
+      
       // Create enhanced context for the LLM
-      const enhancedContext = conversationContext ? 
-        `Meeting Context:\n${contextSummary}\n\nRecent Conversation:\n${conversationContext}\n\nCurrent Question: ${finalQuestion}` :
-        `Current Question: ${finalQuestion}`;
+      let enhancedContext = '';
+      if (conversationContext) {
+        enhancedContext = `Current Meeting Context:\n${contextSummary}\n\nRecent Conversation:\n${conversationContext}`;
+      }
+      if (pastMeetingContext) {
+        enhancedContext += `\n\n${pastMeetingContext}`;
+      }
+      if (!enhancedContext) {
+        enhancedContext = `Current Question: ${finalQuestion}`;
+      } else {
+        enhancedContext += `\n\nCurrent Question: ${finalQuestion}`;
+      }
       
       console.log('\n🧠 [GEMINI] === SENDING TO LLM ===');
       console.log('📤 [GEMINI] Sending to Gemini AI with context:', finalQuestion);
@@ -148,7 +171,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('📥 [ELEVENLABS] Audio duration:', ttsResult.duration, 'seconds');
       
       // Store the Hero response in context (use original text for context, cleaned text for TTS)
-      contextService.addEntry(roomName, 'hero', llmResponse.text);
+      contextService.addEntry(roomName, 'hero', llmResponse.text, orgName);
       
       console.log('\n✅ [API] === HERO PIPELINE COMPLETE ===\n');
 
@@ -176,7 +199,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       // Store the fallback response in context too
       if (req.body.roomName) {
-        contextService.addEntry(req.body.roomName, 'hero', fallbackResponse);
+        const { orgName } = req.body;
+        contextService.addEntry(req.body.roomName, 'hero', fallbackResponse, orgName);
       }
       
       res.status(200).json({

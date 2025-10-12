@@ -16,6 +16,7 @@
     "dotenv": "^17.2.2",
     "livekit-client": "^2.13.3",
     "livekit-server-sdk": "^2.13.3",
+    "lottie-react": "^2.4.1",
     "next": "14.0.4",
     "openai": "^6.3.0",
     "react": "^18",
