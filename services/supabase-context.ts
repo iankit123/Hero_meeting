@@ -45,6 +45,10 @@ export class SupabaseContextService {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
 
+    console.log('🔍 [SUPABASE-INIT] Checking environment variables...');
+    console.log('🔍 [SUPABASE-INIT] SUPABASE_URL:', supabaseUrl ? `${supabaseUrl.substring(0, 30)}...` : 'MISSING');
+    console.log('🔍 [SUPABASE-INIT] SUPABASE_KEY length:', supabaseKey?.length || 0);
+
     if (!supabaseUrl || !supabaseKey) {
       console.warn('⚠️ [SUPABASE] Missing environment variables - Supabase integration disabled');
       this.isEnabled = false;
@@ -53,9 +57,24 @@ export class SupabaseContextService {
       return;
     }
 
-    this.supabase = createClient(supabaseUrl, supabaseKey);
-    this.isEnabled = true;
-    console.log('✅ [SUPABASE] Context service initialized');
+    try {
+      this.supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        },
+        global: {
+          fetch: fetch.bind(globalThis)
+        }
+      });
+      this.isEnabled = true;
+      console.log('✅ [SUPABASE] Context service initialized');
+      console.log('✅ [SUPABASE] URL:', supabaseUrl);
+    } catch (error) {
+      console.error('❌ [SUPABASE] Failed to create client:', error);
+      this.isEnabled = false;
+      this.supabase = {} as SupabaseClient;
+    }
   }
 
   /**
@@ -383,11 +402,16 @@ export class SupabaseContextService {
    * Get meetings by organization
    */
   async getMeetingsByOrg(orgName: string, limit: number = 50): Promise<Meeting[]> {
-    if (!this.isEnabled) return [];
+    if (!this.isEnabled) {
+      console.warn('⚠️ [SUPABASE] Service not enabled - check environment variables');
+      return [];
+    }
 
     try {
       // Normalize org name to lowercase for case-insensitive matching
       const normalizedOrgName = orgName.toLowerCase();
+      
+      console.log(`🔍 [SUPABASE] Query params: org_name = "${normalizedOrgName}", limit = ${limit}`);
       
       const { data, error } = await this.supabase
         .from('meetings')
@@ -396,9 +420,32 @@ export class SupabaseContextService {
         .order('started_at', { ascending: false })
         .limit(limit);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ [SUPABASE] Query error:', error);
+        throw error;
+      }
 
       console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} meetings for org: ${orgName} (normalized: ${normalizedOrgName})`);
+      
+      // Debug: Log first meeting if exists
+      if (data && data.length > 0) {
+        console.log(`📊 [SUPABASE] First meeting:`, {
+          id: data[0].id,
+          room_name: data[0].room_name,
+          org_name: data[0].org_name,
+          started_at: data[0].started_at
+        });
+      } else {
+        console.warn(`⚠️ [SUPABASE] No meetings found for org_name = "${normalizedOrgName}"`);
+        
+        // Debug: Check if ANY meetings exist
+        const { data: allMeetings } = await this.supabase
+          .from('meetings')
+          .select('org_name')
+          .limit(10);
+        console.log(`🔍 [SUPABASE] Sample org_names in database:`, allMeetings?.map(m => `"${m.org_name}"`));
+      }
+      
       return data || [];
     } catch (error) {
       console.error('❌ [SUPABASE] Error fetching meetings for org:', error);

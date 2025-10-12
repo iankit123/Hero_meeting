@@ -13,6 +13,30 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const router = useRouter();
 
+  // Trigger background summary generation for meetings without summaries
+  const generateMissingSummaries = async (orgName: string) => {
+    try {
+      // Fire and forget - don't await, don't block UI
+      fetch('/api/summaries/generate-missing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgName })
+      }).then(async response => {
+        if (response.ok) {
+          const data = await response.json();
+          console.log('✅ [DASHBOARD] Background summary generation triggered:', data);
+        } else {
+          console.warn('⚠️ [DASHBOARD] Summary generation returned error');
+        }
+      }).catch(err => {
+        console.warn('⚠️ [DASHBOARD] Summary generation failed:', err);
+      });
+    } catch (err) {
+      // Silently fail - don't disrupt user experience
+      console.warn('⚠️ [DASHBOARD] Could not trigger summary generation:', err);
+    }
+  };
+
   useEffect(() => {
     // Get org name from localStorage (normalized lowercase)
     const storedOrgName = localStorage.getItem('hero_meeting_org');
@@ -26,6 +50,27 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
     // Get display name (original case) or fall back to normalized
     const displayName = localStorage.getItem('hero_meeting_org_display') || storedOrgName;
     setOrgDisplayName(displayName);
+
+    // Trigger background summary generation with rate limiting
+    // Only run once every 5 minutes per org to prevent duplicate runs
+    const SUMMARY_CHECK_INTERVAL = 5 * 60 * 1000; // 5 minutes
+    const lastCheckKey = `summary_check_${storedOrgName}`;
+    const lastCheck = localStorage.getItem(lastCheckKey);
+    const now = Date.now();
+    
+    // Temporarily disabled until SQL script is run
+    // TODO: Re-enable after running scripts/add-summary-columns.sql in Supabase
+    // console.log('ℹ️ [DASHBOARD] Summary generation disabled - run SQL script first');
+    
+    // Uncomment below after running SQL:
+    if (!lastCheck || now - parseInt(lastCheck) > SUMMARY_CHECK_INTERVAL) {
+      console.log('🔄 [DASHBOARD] Triggering background summary generation...');
+      generateMissingSummaries(storedOrgName);
+      localStorage.setItem(lastCheckKey, now.toString());
+    } else {
+      const nextCheck = new Date(parseInt(lastCheck) + SUMMARY_CHECK_INTERVAL);
+      console.log(`ℹ️ [DASHBOARD] Summary generation already ran recently. Next check: ${nextCheck.toLocaleTimeString()}`);
+    }
   }, [router]);
 
   const handleTabClick = (tab: 'meetings' | 'past-meetings') => {
