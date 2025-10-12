@@ -31,14 +31,24 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
   const formatSpeakerName = (speaker: string | undefined) => {
     if (!speaker) return 'Unknown Speaker';
     if (speaker === 'system') return 'System';
+    if (speaker === 'hero-bot' || speaker.toLowerCase().includes('hero')) return 'Hero';
     
-    // Convert UUID to Participant 1/2 based on a simple hash
-    const hash = speaker.split('').reduce((a, b) => {
-      a = ((a << 5) - a) + b.charCodeAt(0);
-      return a & a;
-    }, 0);
+    // Extract name from identity format: "Name-uuid" or "Name_With_Spaces-uuid"
+    // Examples: "John_Doe-a1b2c3d4" -> "John Doe", "user-a1b2c3d4" -> "user"
+    const nameMatch = speaker.match(/^(.+?)-[a-f0-9]{8}$/i);
+    if (nameMatch) {
+      // Replace underscores with spaces and capitalize
+      const name = nameMatch[1].replace(/_/g, ' ');
+      return name;
+    }
     
-    return `Participant ${Math.abs(hash) % 2 + 1}`;
+    // If no UUID pattern, check for old format "user-uuid"
+    if (speaker.startsWith('user-')) {
+      return 'Unknown Participant';
+    }
+    
+    // Return as-is if no pattern matches
+    return speaker;
   };
 
   const formatTime = (timestamp: number) => {

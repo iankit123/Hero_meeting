@@ -10,26 +10,18 @@ export default function LandingPage() {
   const handleCreateMeeting = async () => {
     setIsCreating(true);
     try {
-      // Generate a unique room name
-      const roomName = `meeting-${Date.now()}`;
+      // Check if org is already set
+      const orgName = localStorage.getItem('hero_meeting_org');
       
-      const response = await fetch('/api/create-room', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ roomName }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create meeting');
+      if (orgName) {
+        // Org already set, go to dashboard
+        router.push('/dashboard');
+      } else {
+        // Need to set org first
+        router.push('/org-entry');
       }
-
-      const data = await response.json();
-      router.push(`/meeting/${data.roomName}`);
     } catch (error) {
-      console.error('Error creating meeting:', error);
-      alert('Failed to create meeting. Please try again.');
+      console.error('Error:', error);
     } finally {
       setIsCreating(false);
     }

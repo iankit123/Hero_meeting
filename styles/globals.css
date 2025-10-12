@@ -7,8 +7,8 @@ body {
     Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
   background-color: #0f172a;
   color: white;
-  overflow-x: auto; /* Allow horizontal scrolling on mobile */
-  overflow-y: hidden; /* Prevent vertical scrolling */
+  overflow-x: hidden; /* Prevent horizontal scrolling */
+  overflow-y: auto; /* Allow vertical scrolling */
 }
 
 a {
@@ -72,7 +72,12 @@ a {
   background-color: #4b5563;
 }
 
-/* Meeting room layout */
+/* Meeting room layout - specific overflow for meeting pages */
+.meeting-page {
+  overflow: hidden !important;
+  height: 100vh;
+}
+
 .meeting-container {
   display: flex;
   height: 100vh;

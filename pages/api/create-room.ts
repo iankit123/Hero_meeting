@@ -8,8 +8,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { roomName } = req.body;
+    const { roomName, participantName } = req.body;
     const room = roomName || `room-${uuidv4()}`;
+    const name = participantName || 'Meeting Participant';
 
     // Validate environment variables
     const livekitUrl = process.env.LIVEKIT_URL;
@@ -23,9 +24,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Create access token for user
+    // Use participantName as identity (with UUID suffix for uniqueness)
+    const userId = `${name.replace(/[^a-zA-Z0-9]/g, '_')}-${uuidv4().substring(0, 8)}`;
     const token = new AccessToken(livekitApiKey, livekitApiSecret, {
-      identity: `user-${uuidv4()}`,
-      name: 'Meeting Participant',
+      identity: userId,
+      name: name,
     });
 
     token.addGrant({
