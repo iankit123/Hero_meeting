@@ -9,6 +9,7 @@ interface Meeting {
   ended_at?: string;
   duration_minutes?: number;
   participant_count: number;
+  summary?: string;
 }
 
 interface Transcript {
@@ -54,7 +55,13 @@ const PastMeetingsTab: React.FC = () => {
       const response = await fetch(`/api/meetings/export-transcript?roomName=${encodeURIComponent(meeting.room_name)}`);
       const data = await response.json();
 
-      setSelectedMeeting(meeting);
+      // Include summary if available
+      const meetingWithSummary = {
+        ...meeting,
+        summary: meeting.summary || undefined
+      };
+
+      setSelectedMeeting(meetingWithSummary);
       setSelectedTranscripts(data.transcripts || []);
       setIsModalOpen(true);
     } catch (error) {

@@ -121,9 +121,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       console.log('\n🧠 [GEMINI] === SENDING TO LLM ===');
       console.log('📤 [GEMINI] Sending to Gemini AI with context:', finalQuestion);
+      console.log('🔍 [DEBUG] Enhanced context being sent:', enhancedContext.substring(0, 500) + '...');
 
-      // Generate LLM response
-      const llmResponse = await llmService.generateResponse(finalQuestion, enhancedContext);
+      // Generate LLM response with anti-hallucination prompt
+      const hasContext = enhancedContext && enhancedContext.trim().length > 0;
+      
+      const antiHallucinationPrompt = `You are a helpful AI assistant for meeting discussions. 
+
+CRITICAL RULES:
+1. ONLY use information explicitly provided in the context below
+2. NEVER make up names, people, or details not mentioned in the context
+3. NEVER assume someone participated in a meeting unless explicitly shown
+4. If you don't have specific information, say "I don't have that specific information"
+5. Do not reference people who are not mentioned in the provided context
+6. Be precise and factual - avoid speculation
+7. Pay attention to meeting dates and participants - don't assume temporal relationships
+8. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
+
+Context: ${enhancedContext || 'NO CONTEXT AVAILABLE'}
+
+Question: ${finalQuestion}
+
+Answer based ONLY on the provided context. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
+
+      const llmResponse = await llmService.generateResponse(antiHallucinationPrompt, '');
       
       console.log('📥 [GEMINI] Received response from Gemini:');
       console.log('📥 [GEMINI] Response length:', llmResponse.text?.length || 0, 'characters');

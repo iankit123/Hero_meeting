@@ -54,8 +54,26 @@ class MeetingContextService {
       if (summaryResults && summaryResults.length > 0) {
         console.log(`✅ [RAG-TIER1] Found ${summaryResults.length} relevant meetings via summaries`);
         
-        // Add summary-level context
+        // Add summary-level context with speaker validation
         context += '\n**Relevant Past Meetings:**\n';
+        
+        // Collect all speakers from relevant meetings for validation
+        const allSpeakers = new Set();
+        summaryResults.forEach((meeting: any) => {
+          // Extract speaker names from summary (basic pattern matching)
+          const speakerMatches = meeting.summary?.match(/([A-Z][a-z]+(?:-[A-Za-z0-9]+)?)/g) || [];
+          speakerMatches.forEach((speaker: string) => {
+            if (speaker.length > 2 && !speaker.match(/^(Meeting|Summary|Date|Relevant)$/)) {
+              allSpeakers.add(speaker);
+            }
+          });
+        });
+        
+        if (allSpeakers.size > 0) {
+          context += `**Note: People mentioned in these meetings: ${Array.from(allSpeakers).join(', ')}**\n`;
+          context += `**IMPORTANT: Do not assume people participated in meetings unless explicitly shown below.**\n\n`;
+        }
+        
         summaryResults.forEach((meeting: any, idx: number) => {
           const similarity = (meeting.similarity * 100).toFixed(0);
           const date = new Date(meeting.started_at).toLocaleDateString();
@@ -121,8 +139,14 @@ class MeetingContextService {
 
       console.log(`✅ [RAG] Found ${transcriptResults.length} relevant transcripts`);
 
-      // Format context for LLM
+      // Extract and validate speaker names to prevent hallucination
+      const validSpeakers = new Set(transcriptResults.map((t: any) => t.speaker).filter(Boolean));
+      console.log(`🔍 [RAG] Valid speakers found: ${Array.from(validSpeakers).join(', ')}`);
+
+      // Format context for LLM with speaker validation and temporal awareness
       context = '\n**Relevant Context from Past Meetings:**\n';
+      context += `**Note: Only the following people are mentioned in our records: ${Array.from(validSpeakers).join(', ')}**\n`;
+      context += `**IMPORTANT: Do not assume people participated in meetings unless explicitly shown below.**\n\n`;
       
       transcriptResults.forEach((result: any, idx: number) => {
         const similarity = (result.similarity * 100).toFixed(0);

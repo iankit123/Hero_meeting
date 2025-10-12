@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 interface Transcript {
   id: string;
@@ -16,11 +16,59 @@ interface TranscriptModalProps {
     started_at: string;
     ended_at?: string;
     duration_minutes?: number;
+    summary?: string;
   } | null;
   transcripts: Transcript[];
 }
 
 const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meeting, transcripts }) => {
+  const [summary, setSummary] = useState<string>('');
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
+
+  const generateSummary = useCallback(async () => {
+    if (isGeneratingSummary || !meeting) return;
+    
+    setIsGeneratingSummary(true);
+    try {
+      const response = await fetch('/api/meetings/generate-summary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          roomName: meeting.room_name
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setSummary(data.summary);
+        setShowSummary(true);
+      } else {
+        console.error('Failed to generate summary:', data.error);
+      }
+    } catch (error) {
+      console.error('Error generating summary:', error);
+    } finally {
+      setIsGeneratingSummary(false);
+    }
+  }, [isGeneratingSummary, meeting]);
+
+  // Load existing summary or generate new one
+  useEffect(() => {
+    if (isOpen && meeting) {
+      if (meeting.summary) {
+        setSummary(meeting.summary);
+        setShowSummary(true);
+      } else {
+        // Generate summary if not exists
+        generateSummary();
+      }
+    }
+  }, [isOpen, meeting, generateSummary]);
+
   if (!isOpen || !meeting) return null;
 
   const formatDateTime = (dateString: string) => {
@@ -143,6 +191,130 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
             </svg>
           </button>
         </div>
+
+        {/* Summary Section */}
+        {showSummary && (
+          <div style={{
+            padding: '20px 30px',
+            borderBottom: '1px solid #e5e7eb',
+            backgroundColor: '#f8fafc'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '16px'
+            }}>
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '600',
+                color: '#1a1a1a',
+                margin: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>📋</span>
+                Meeting Summary
+              </h3>
+              <button
+                onClick={() => setShowSummary(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  color: '#6b7280',
+                  fontSize: '12px'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#e5e7eb'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                Hide
+              </button>
+            </div>
+            <div style={{
+              fontSize: '14px',
+              color: '#374151',
+              lineHeight: '1.6',
+              whiteSpace: 'pre-wrap',
+              backgroundColor: 'white',
+              padding: '16px',
+              borderRadius: '8px',
+              border: '1px solid #e5e7eb'
+            }}>
+              {summary}
+            </div>
+          </div>
+        )}
+
+        {/* Generate Summary Button */}
+        {!showSummary && !isGeneratingSummary && (
+          <div style={{
+            padding: '20px 30px',
+            borderBottom: '1px solid #e5e7eb',
+            backgroundColor: '#f8fafc'
+          }}>
+            <button
+              onClick={generateSummary}
+              style={{
+                padding: '12px 24px',
+                fontSize: '14px',
+                fontWeight: '600',
+                color: 'white',
+                backgroundColor: '#667eea',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#5568d3';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#667eea';
+                e.currentTarget.style.transform = 'translateY(0)';
+              }}
+            >
+              <span>📋</span>
+              Generate Meeting Summary
+            </button>
+          </div>
+        )}
+
+        {/* Loading Summary */}
+        {isGeneratingSummary && (
+          <div style={{
+            padding: '20px 30px',
+            borderBottom: '1px solid #e5e7eb',
+            backgroundColor: '#f8fafc',
+            textAlign: 'center'
+          }}>
+            <div style={{
+              fontSize: '14px',
+              color: '#6b7280',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px'
+            }}>
+              <div style={{
+                width: '16px',
+                height: '16px',
+                border: '2px solid #e5e7eb',
+                borderTop: '2px solid #667eea',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+              Generating meeting summary...
+            </div>
+          </div>
+        )}
 
         {/* Transcript Content */}
         <div style={{
@@ -297,6 +469,10 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
               opacity: 1;
               transform: translateX(0);
             }
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
         `
       }} />

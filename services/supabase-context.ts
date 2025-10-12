@@ -10,6 +10,7 @@ interface Meeting {
   participant_count: number;
   duration_minutes?: number;
   metadata?: any;
+  summary?: string;
 }
 
 interface Transcript {
