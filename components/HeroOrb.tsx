@@ -15,7 +15,7 @@ export const HeroOrb: React.FC<HeroOrbProps> = ({ isSpeaking, className = '' }) 
 
   useEffect(() => {
     // Load Lottie animation
-    fetch('/hero-animation.json')
+    fetch('/siri-animation.json')
       .then(res => res.json())
       .then(data => setAnimationData(data))
       .catch(err => console.error('Failed to load Hero animation:', err));
