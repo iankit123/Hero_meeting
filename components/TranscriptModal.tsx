@@ -238,13 +238,51 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
               fontSize: '14px',
               color: '#374151',
               lineHeight: '1.6',
-              whiteSpace: 'pre-wrap',
               backgroundColor: 'white',
               padding: '16px',
               borderRadius: '8px',
               border: '1px solid #e5e7eb'
             }}>
-              {summary}
+              {summary.split('\n').map((line, index) => {
+                // Handle bullet points
+                if (line.trim().startsWith('* ')) {
+                  return (
+                    <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '6px' }}>
+                      <span style={{ color: '#6b7280', marginRight: '8px', marginTop: '2px' }}>•</span>
+                      <span>{line.trim().substring(2)}</span>
+                    </div>
+                  );
+                }
+                // Handle numbered lists
+                if (line.trim().match(/^\d+\.\s/)) {
+                  return (
+                    <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '6px' }}>
+                      <span style={{ color: '#6b7280', marginRight: '8px', marginTop: '2px' }}>{line.trim().match(/^\d+/)?.[0]}.</span>
+                      <span>{line.trim().replace(/^\d+\.\s/, '')}</span>
+                    </div>
+                  );
+                }
+                // Handle bold headers (e.g., **Meeting Overview**)
+                if (line.trim().match(/^\*\*(.*?)\*\*:/)) {
+                  const headerText = line.trim().match(/^\*\*(.*?)\*\*:/)?.[1];
+                  return (
+                    <h4 key={index} style={{ 
+                      fontWeight: '600', 
+                      color: '#1f2937', 
+                      margin: index > 0 ? '16px 0 8px 0' : '0 0 8px 0',
+                      fontSize: '16px'
+                    }}>
+                      {headerText}:
+                    </h4>
+                  );
+                }
+                // Handle regular lines
+                return (
+                  <p key={index} style={{ margin: index > 0 ? '8px 0 0 0' : '0' }}>
+                    {line}
+                  </p>
+                );
+              })}
             </div>
           </div>
         )}
@@ -397,14 +435,39 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
                           })}
                         </span>
                       </div>
-                      <p style={{
+                      <div style={{
                         margin: 0,
                         fontSize: '15px',
                         color: '#374151',
                         lineHeight: '1.6'
                       }}>
-                        {transcript.message}
-                      </p>
+                        {transcript.message.split('\n').map((line, index) => {
+                          // Handle bullet points
+                          if (line.trim().startsWith('* ')) {
+                            return (
+                              <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                <span style={{ color: '#6b7280', marginRight: '8px', marginTop: '2px' }}>•</span>
+                                <span>{line.trim().substring(2)}</span>
+                              </div>
+                            );
+                          }
+                          // Handle numbered lists
+                          if (line.trim().match(/^\d+\.\s/)) {
+                            return (
+                              <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '4px' }}>
+                                <span style={{ color: '#6b7280', marginRight: '8px', marginTop: '2px' }}>{line.trim().match(/^\d+/)?.[0]}.</span>
+                                <span>{line.trim().replace(/^\d+\.\s/, '')}</span>
+                              </div>
+                            );
+                          }
+                          // Handle regular lines
+                          return (
+                            <p key={index} style={{ margin: index > 0 ? '8px 0 0 0' : '0' }}>
+                              {line}
+                            </p>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );

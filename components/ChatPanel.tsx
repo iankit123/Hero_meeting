@@ -136,7 +136,34 @@ export default function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
                       {formatTime(message.timestamp)}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-800">{message.text}</p>
+                  <div className="text-sm text-gray-800">
+                    {message.text.split('\n').map((line, index) => {
+                      // Handle bullet points
+                      if (line.trim().startsWith('* ')) {
+                        return (
+                          <div key={index} className="flex items-start mb-1">
+                            <span className="text-gray-600 mr-2 mt-0.5">•</span>
+                            <span>{line.trim().substring(2)}</span>
+                          </div>
+                        );
+                      }
+                      // Handle numbered lists
+                      if (line.trim().match(/^\d+\.\s/)) {
+                        return (
+                          <div key={index} className="flex items-start mb-1">
+                            <span className="text-gray-600 mr-2 mt-0.5">{line.trim().match(/^\d+/)?.[0]}.</span>
+                            <span>{line.trim().replace(/^\d+\.\s/, '')}</span>
+                          </div>
+                        );
+                      }
+                      // Handle regular lines
+                      return (
+                        <p key={index} className={index > 0 ? 'mt-2' : ''}>
+                          {line}
+                        </p>
+                      );
+                    })}
+                  </div>
                 </div>
               ))
             )}

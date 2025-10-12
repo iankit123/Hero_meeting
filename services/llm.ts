@@ -38,7 +38,7 @@ export class GeminiLLMService implements LLMService {
   ): Promise<LLMResponse> {
     try {
       const fullPrompt = context
-      ? `You are **Hero**, an intelligent AI meeting attendee. 
+      ? `You are *Hero*, an intelligent AI meeting attendee. 
       You are present in this meeting to actively listen, understand the discussion, 
       and provide clear, concise, and context-aware answers when addressed.
       
