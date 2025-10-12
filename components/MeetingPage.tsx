@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Room, RoomEvent, RemoteParticipant, RemoteTrack, Track, TrackPublication, createLocalVideoTrack, createLocalAudioTrack, LocalTrack } from 'livekit-client';
 import ChatPanel, { ChatMessage } from './ChatPanel';
 import { createSTTService, STTService, STTResult } from '../services/stt';
+import NameInputModal from './NameInputModal';
 
 interface MeetingPageProps {
   roomName: string;
@@ -14,7 +15,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -24,6 +25,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
+  const [showNameModal, setShowNameModal] = useState(true);
+  const [participantName, setParticipantName] = useState<string>('');
   const videoRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -45,6 +48,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   });
 
   useEffect(() => {
+    // Don't initialize until we have participant name
+    if (!participantName) {
+      console.log('⏸️ [INIT] Waiting for participant name...');
+      return;
+    }
+
     // Initialize STT service
     try {
       sttServiceRef.current = createSTTService(sttProvider);
@@ -66,7 +75,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         clearTimeout(heroQueryAccumulator.current.timeout);
       }
     };
-  }, [roomName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomName, participantName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize audio context on first user interaction
   useEffect(() => {
@@ -130,12 +139,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       
       // STEP 2: Get join token from backend
       console.log('🎫 [TOKEN] Getting LiveKit token...');
+      console.log(`👤 [TOKEN] Participant name: ${participantName}`);
       const response = await fetch('/api/create-room', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ roomName }),
+        body: JSON.stringify({ roomName, participantName }),
       });
 
       if (!response.ok) {
@@ -1720,6 +1730,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     window.location.href = '/';
   };
 
+  const handleNameSubmit = (name: string) => {
+    console.log(`👤 [NAME] Participant name submitted: ${name}`);
+    setParticipantName(name);
+    setShowNameModal(false);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0f172a' }}>
@@ -1775,6 +1791,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   return (
     <div className="meeting-container" style={{ height: '100vh', overflow: 'hidden' }}>
+      {/* Name Input Modal */}
+      <NameInputModal 
+        isOpen={showNameModal} 
+        onSubmit={handleNameSubmit}
+      />
+      
       {/* Main Video Area */}
       <div className="video-area" style={{ height: '100vh', overflow: 'hidden' }}>
         {/* Header */}
