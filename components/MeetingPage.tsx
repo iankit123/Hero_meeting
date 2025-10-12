@@ -952,7 +952,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 videoElement.setAttribute('data-test-id', `remote-video-forced-${participantId}`);
                 
                 if (videoRef.current) {
-                  videoRef.current.innerHTML = '';
+                  // Don't clear existing videos, just append the missing one
                   videoRef.current.appendChild(videoElement);
                   videoElement.play().catch(e => console.warn('Forced track play failed:', e));
                   console.log(`✅ [MISSED-TRACK] Forced attachment successful for ${participantId}`);
@@ -1044,7 +1044,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     
     // Broadcast transcript to all participants if it's from local user
     if (message.speaker === 'user' || message.speaker === 'local') {
-      const speakerName = room?.localParticipant?.identity || 'Participant 1';
+      const speakerName = room?.localParticipant?.identity || participantName || 'Participant 1';
       await broadcastTranscript(message.text, speakerName, message.id);
     }
   };
@@ -1078,8 +1078,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   // Broadcast Hero message to all participants via LiveKit data channel
   const broadcastHeroMessage = async (text: string, messageId: string) => {
-    if (!room) {
-      console.warn('⚠️ [BROADCAST] No room available for broadcasting');
+    if (!room || room.state !== 'connected') {
+      console.warn('⚠️ [BROADCAST] No room available for broadcasting. Room:', room?.state || 'null');
       return;
     }
 
@@ -1101,8 +1101,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   // Broadcast transcript to all participants via LiveKit data channel
   const broadcastTranscript = async (text: string, speaker: string, messageId: string) => {
-    if (!room) {
-      console.warn('⚠️ [TRANSCRIPT-BROADCAST] No room available for broadcasting');
+    if (!room || room.state !== 'connected') {
+      console.warn('⚠️ [TRANSCRIPT-BROADCAST] No room available for broadcasting. Room:', room?.state || 'null');
       return;
     }
 
@@ -1145,7 +1145,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         console.log('🎤 [STT] Transcript received:', result.text);
         
         // Use participant identity for speaker identification
-        const speakerName = room?.localParticipant?.identity || 'Participant 1';
+        const speakerName = room?.localParticipant?.identity || participantName || 'Participant 1';
         
         await addTranscript({
           id: generateMessageId(),
@@ -1344,8 +1344,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         
         // Play TTS audio if available - broadcast to all participants
         if (data.audioBuffer) {
-          if (!room) {
-            console.warn('❌ [FRONTEND] Room not available for broadcasting');
+          if (!room || room.state !== 'connected') {
+            console.warn('❌ [FRONTEND] Room not available for broadcasting. Room:', room?.state || 'null');
             // Fallback to local playback only
             try {
               // Initialize audio context if not already done
