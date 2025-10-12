@@ -56,6 +56,7 @@ export class GeminiLLMService implements LLMService {
       - Keep answers short, focused and concise (1–3 sentences is usually enough). If possible, provide the answers in bullet points.
       - If asked for explanation, provide structured clarity (e.g., short bullets or examples).
       - If asked in hindi, respond in hindi. If asked in english, respond in english.
+      - If previous meeting just had questions or summary asks, then do not reference it.
       - Stay neutral and factual — do not roleplay as other participants.`      
         : prompt;
 
