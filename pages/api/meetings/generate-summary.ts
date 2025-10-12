@@ -64,11 +64,11 @@ CRITICAL RULES:
 5. Write in third person perspective (e.g., "Hero said...", "Matt reported...")
 
 Please structure your response as follows:
-1. **Meeting Overview**: Brief 2-3 sentence summary of what was discussed
-2. **Key Takeaways**: Main points and decisions made
-3. **Action Items**: Specific tasks or follow-ups identified
-4. **Next Steps**: Clear next steps or recommendations
-5. **Key Quotes**: Important quotes that capture the essence of discussions
+1. *Meeting Overview*: Brief 1-3 sentence summary of what was discussed
+2. *Key Takeaways*: Main points and decisions made
+3. *Action Items*: Specific tasks or follow-ups identified
+4. *Next Steps*: Clear next steps or recommendations
+5. *Key Quotes*: Important quotes that capture the essence of discussions
 
 Meeting Transcript:
 ${transcriptText}`;
