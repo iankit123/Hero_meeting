@@ -75,8 +75,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         sttServiceRef.current.stopTranscription();
       }
       // Clean up hero query accumulator timeout
-      if (heroQueryAccumulator.current.timeout) {
-        clearTimeout(heroQueryAccumulator.current.timeout);
+      const accumulatorTimeout = heroQueryAccumulator.current.timeout;
+      if (accumulatorTimeout) {
+        clearTimeout(accumulatorTimeout);
       }
     };
   }, [roomName, participantName]); // eslint-disable-line react-hooks/exhaustive-deps

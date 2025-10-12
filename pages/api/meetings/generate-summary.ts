@@ -52,7 +52,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const llmService = createLLMService();
     
     // Extract actual speakers from transcripts to prevent hallucination
-    const actualSpeakers = [...new Set(transcripts.map((t: any) => t.speaker).filter(Boolean))];
+    const actualSpeakers = Array.from(new Set(transcripts.map((t: any) => t.speaker).filter(Boolean)));
     
     const summaryPrompt = `Generate a factual summary of this meeting based ONLY on the provided transcript. 
 

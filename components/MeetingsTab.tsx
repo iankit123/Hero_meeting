@@ -226,9 +226,9 @@ const MeetingsTab: React.FC = () => {
           color: '#6b7280',
           lineHeight: '1.8'
         }}>
-          <li>Say <strong>"Hey Hero"</strong> or <strong>"Hi Hero"</strong> to activate the AI assistant</li>
+          <li>Say <strong>&quot;Hey Hero&quot;</strong> or <strong>&quot;Hi Hero&quot;</strong> to activate the AI assistant</li>
           <li>All conversations are automatically transcribed and saved</li>
-          <li>You can view past meeting transcripts in the "Past Meetings" tab</li>
+          <li>You can view past meeting transcripts in the &quot;Past Meetings&quot; tab</li>
           <li>Share the meeting link with others to invite them</li>
         </ul>
       </div>

@@ -177,9 +177,10 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       
       // Cleanup tracks
       const cleanupPublications = Array.from(participant.trackPublications.values());
+      const currentVideoRef = videoRef.current;
       cleanupPublications.forEach((publication: any) => {
-        if (publication.track && videoRef.current) {
-          publication.track.detach(videoRef.current);
+        if (publication.track && currentVideoRef) {
+          publication.track.detach(currentVideoRef);
         }
       });
     };

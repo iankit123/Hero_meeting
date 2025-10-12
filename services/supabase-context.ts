@@ -168,7 +168,7 @@ export class SupabaseContextService {
 
     try {
       // Get or create meeting ID
-      let meetingId = this.activeMeetings.get(roomName);
+      let meetingId: string | null | undefined = this.activeMeetings.get(roomName);
       
       if (!meetingId) {
         // Check if meeting exists in DB
@@ -180,9 +180,9 @@ export class SupabaseContextService {
           .limit(1)
           .maybeSingle();
 
-        if (existingMeeting) {
+        if (existingMeeting && existingMeeting.id) {
           meetingId = existingMeeting.id;
-          this.activeMeetings.set(roomName, meetingId);
+          this.activeMeetings.set(roomName, meetingId!);
         } else {
           // Auto-create meeting if it doesn't exist
           meetingId = await this.startMeeting(roomName, orgName);
