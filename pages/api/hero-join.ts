@@ -126,7 +126,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Generate LLM response with anti-hallucination prompt
       const hasContext = enhancedContext && enhancedContext.trim().length > 0;
       
-      const antiHallucinationPrompt = `You are a helpful AI assistant for meeting discussions. 
+      const antiHallucinationPrompt = `You are Hero, an AI assistant participating in meetings. You should respond as Hero using first person ("I", "me", "my").
 
 CRITICAL RULES:
 1. ONLY use information explicitly provided in the context below
@@ -136,13 +136,14 @@ CRITICAL RULES:
 5. Do not reference people who are not mentioned in the provided context
 6. Be precise and factual - avoid speculation
 7. Pay attention to meeting dates and participants - don't assume temporal relationships
-8. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
+8. Always respond as Hero using first person ("I", "me", "my")
+9. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
 
 Context: ${enhancedContext || 'NO CONTEXT AVAILABLE'}
 
 Question: ${finalQuestion}
 
-Answer based ONLY on the provided context. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
+Answer as Hero using first person, based ONLY on the provided context. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
 
       const llmResponse = await llmService.generateResponse(antiHallucinationPrompt, '');
       

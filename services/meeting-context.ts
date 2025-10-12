@@ -77,7 +77,13 @@ class MeetingContextService {
         summaryResults.forEach((meeting: any, idx: number) => {
           const similarity = (meeting.similarity * 100).toFixed(0);
           const date = new Date(meeting.started_at).toLocaleDateString();
-          context += `\n${idx + 1}. Meeting: ${meeting.room_name} (${date}) [${similarity}% relevant]\n`;
+          const formattedDate = new Date(meeting.started_at).toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          });
+          context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
           context += `   Summary: ${meeting.summary}\n`;
         });
         
@@ -107,8 +113,14 @@ class MeetingContextService {
               context += '\n**Specific Details:**\n';
               relevantTranscripts.forEach((result: any, idx: number) => {
                 const similarity = (result.similarity * 100).toFixed(0);
+                const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                });
                 const speaker = result.speaker || 'Unknown';
-                context += `\n- [${similarity}%] ${speaker}: "${result.message}"\n`;
+                context += `\n- [${similarity}%] ${speaker}: "${result.message}" (from meeting on ${formattedDate})\n`;
               });
             }
           }
@@ -150,11 +162,16 @@ class MeetingContextService {
       
       transcriptResults.forEach((result: any, idx: number) => {
         const similarity = (result.similarity * 100).toFixed(0);
-        const date = new Date(result.created_at).toLocaleDateString();
+        const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        });
         const speaker = result.speaker || 'Unknown';
         
         context += `\n${idx + 1}. [${similarity}% relevant] ${speaker}: "${result.message}"\n`;
-        context += `   (Meeting: ${result.room_name}, Date: ${date})\n`;
+        context += `   (From meeting on ${formattedDate})\n`;
       });
 
       return context;

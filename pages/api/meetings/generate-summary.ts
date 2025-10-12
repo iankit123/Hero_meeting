@@ -61,6 +61,7 @@ CRITICAL RULES:
 2. NEVER make up names, people, or details not in the transcript
 3. Base all information strictly on what was actually said
 4. If information is unclear, don't speculate
+5. Write in third person perspective (e.g., "Hero said...", "Matt reported...")
 
 Please structure your response as follows:
 1. **Meeting Overview**: Brief 2-3 sentence summary of what was discussed
