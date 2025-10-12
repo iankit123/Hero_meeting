@@ -1824,7 +1824,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     if (room) {
       await room.disconnect();
     }
-    window.location.href = '/';
+    window.location.href = '/dashboard';
   };
 
   const handleNameSubmit = (name: string) => {
@@ -1882,7 +1882,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           </h2>
           <p style={{ color: '#9ca3af', marginBottom: '24px' }}>{error}</p>
           <button
-            onClick={() => window.location.href = '/'}
+            onClick={() => window.location.href = '/dashboard'}
             className="btn btn-primary"
           >
             Back to Home
