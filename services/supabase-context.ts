@@ -4,6 +4,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 interface Meeting {
   id: string;
   room_name: string;
+  org_name?: string;
   started_at: string;
   ended_at?: string;
   participant_count: number;
@@ -15,6 +16,7 @@ interface Transcript {
   id: string;
   meeting_id: string;
   room_name: string;
+  org_name?: string;
   speaker: string;
   speaker_id?: string;
   message: string;
@@ -59,14 +61,15 @@ export class SupabaseContextService {
   /**
    * Start a new meeting session
    */
-  async startMeeting(roomName: string, metadata?: any): Promise<string | null> {
+  async startMeeting(roomName: string, orgName?: string, metadata?: any): Promise<string | null> {
     if (!this.isEnabled) return null;
 
     try {
-      const { data, error } = await this.supabase
+      const { data, error} = await this.supabase
         .from('meetings')
         .insert({
           room_name: roomName,
+          org_name: orgName,
           started_at: new Date().toISOString(),
           metadata: metadata || {}
         })
@@ -78,7 +81,7 @@ export class SupabaseContextService {
       const meetingId = data.id;
       this.activeMeetings.set(roomName, meetingId);
       
-      console.log(`✅ [SUPABASE] Meeting started: ${roomName} (${meetingId})`);
+      console.log(`✅ [SUPABASE] Meeting started: ${roomName} (${meetingId}) for org: ${orgName}`);
       return meetingId;
     } catch (error) {
       console.error('❌ [SUPABASE] Error starting meeting:', error);
@@ -135,7 +138,8 @@ export class SupabaseContextService {
     speaker: string,
     message: string,
     speakerId?: string,
-    metadata?: any
+    metadata?: any,
+    orgName?: string
   ): Promise<void> {
     if (!this.isEnabled) return;
 
@@ -158,7 +162,7 @@ export class SupabaseContextService {
           this.activeMeetings.set(roomName, meetingId);
         } else {
           // Auto-create meeting if it doesn't exist
-          meetingId = await this.startMeeting(roomName);
+          meetingId = await this.startMeeting(roomName, orgName);
           if (!meetingId) return; // Failed to create meeting
         }
       }
@@ -168,6 +172,7 @@ export class SupabaseContextService {
         .insert({
           meeting_id: meetingId,
           room_name: roomName,
+          org_name: orgName,
           speaker,
           speaker_id: speakerId,
           message: message.trim(),
@@ -326,6 +331,61 @@ export class SupabaseContextService {
     } catch (error) {
       console.error('❌ [SUPABASE] Error fetching meetings:', error);
       return [];
+    }
+  }
+
+  /**
+   * Get meetings by organization
+   */
+  async getMeetingsByOrg(orgName: string, limit: number = 50): Promise<Meeting[]> {
+    if (!this.isEnabled) return [];
+
+    try {
+      const { data, error } = await this.supabase
+        .from('meetings')
+        .select('*')
+        .eq('org_name', orgName)
+        .order('started_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} meetings for org: ${orgName}`);
+      return data || [];
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error fetching meetings for org:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Delete a meeting and all its transcripts
+   */
+  async deleteMeeting(meetingId: string): Promise<boolean> {
+    if (!this.isEnabled) return false;
+
+    try {
+      // Delete transcripts first (foreign key constraint)
+      const { error: transcriptError } = await this.supabase
+        .from('transcripts')
+        .delete()
+        .eq('meeting_id', meetingId);
+
+      if (transcriptError) throw transcriptError;
+
+      // Delete the meeting
+      const { error: meetingError } = await this.supabase
+        .from('meetings')
+        .delete()
+        .eq('id', meetingId);
+
+      if (meetingError) throw meetingError;
+
+      console.log(`✅ [SUPABASE] Meeting deleted: ${meetingId}`);
+      return true;
+    } catch (error) {
+      console.error('❌ [SUPABASE] Error deleting meeting:', error);
+      return false;
     }
   }
 

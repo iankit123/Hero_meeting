@@ -309,6 +309,7 @@ For support, please open an issue on GitHub or contact the development team.
 - When showing participants in the meeting room, show this names as the participants. Use these names to show in transcripts, and everywhere else where name is shown, inlcuding the database
 - All meeting rooms should have a 1 default participant as "Hero"
 
+- org name
 
 - Show past meeting transcripts, and summaries in web
 

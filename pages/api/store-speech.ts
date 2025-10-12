@@ -7,7 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { roomName, speech, speaker } = req.body;
+    const { roomName, speech, speaker, orgName } = req.body;
 
     if (!roomName || !speech) {
       return res.status(400).json({ 
@@ -15,10 +15,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // Store the speech in context
-    contextService.addEntry(roomName, speaker || 'user', speech);
+    // Store the speech in context with orgName
+    contextService.addEntry(roomName, speaker || 'user', speech, orgName);
 
-    console.log(`📝 [STORE-SPEECH] Stored speech for room ${roomName}: ${speech.substring(0, 50)}...`);
+    console.log(`📝 [STORE-SPEECH] Stored speech for room ${roomName} (org: ${orgName}): ${speech.substring(0, 50)}...`);
 
     res.status(200).json({
       success: true,

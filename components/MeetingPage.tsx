@@ -27,6 +27,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
   const [showNameModal, setShowNameModal] = useState(true);
   const [participantName, setParticipantName] = useState<string>('');
+  const [orgName, setOrgName] = useState<string>('');
   const videoRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -972,7 +973,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           speech: speechText,
-          speaker: 'user'
+          speaker: 'user',
+          orgName: orgName || undefined
         }),
       });
       console.log('📝 [CONTEXT] Stored speech in context:', speechText.substring(0, 50) + '...');
@@ -1733,6 +1735,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const handleNameSubmit = (name: string) => {
     console.log(`👤 [NAME] Participant name submitted: ${name}`);
     setParticipantName(name);
+    
+    // Get org name from localStorage
+    const storedOrgName = localStorage.getItem('hero_meeting_org') || '';
+    setOrgName(storedOrgName);
+    console.log(`🏢 [ORG] Organization: ${storedOrgName}`);
+    
     setShowNameModal(false);
   };
 

@@ -17,7 +17,7 @@ class ContextService {
   private useSupabase = process.env.NEXT_PUBLIC_SUPABASE_URL ? true : false; // Auto-detect Supabase
 
   // Add a conversation entry
-  addEntry(roomName: string, speaker: 'user' | 'hero' | 'system', message: string): void {
+  addEntry(roomName: string, speaker: 'user' | 'hero' | 'system', message: string, orgName?: string): void {
     if (!this.conversations.has(roomName)) {
       this.conversations.set(roomName, []);
     }
@@ -42,7 +42,7 @@ class ContextService {
 
     // ALSO save to Supabase (async, non-blocking)
     if (this.useSupabase) {
-      supabaseContextService.addTranscript(roomName, speaker, message).catch(err => {
+      supabaseContextService.addTranscript(roomName, speaker, message, undefined, undefined, orgName).catch(err => {
         console.error('⚠️ [CONTEXT] Failed to save to Supabase:', err);
       });
     }
