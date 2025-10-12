@@ -1323,8 +1323,10 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       if (data.success && data.response) {
         console.log('✅ [FRONTEND] Hero response successful!');
         
-        // Strip markdown formatting from response
-        const cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1');
+        // Strip markdown formatting from response but preserve bullet points
+        let cleanResponse = data.response.replace(/\*\*(.*?)\*\*/g, '$1'); // Remove bold formatting
+        // Only remove italic formatting, not bullet points
+        cleanResponse = cleanResponse.replace(/\*(?!\s)(.*?)(?!\s)\*/g, '$1'); // Remove italic formatting but preserve "* " bullets
         console.log('🧼 [FRONTEND] Cleaned response text:', cleanResponse);
         
         const messageId = generateMessageId();

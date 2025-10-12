@@ -146,7 +146,7 @@ Context: ${enhancedContext || 'NO CONTEXT AVAILABLE'}
 
 Question: ${finalQuestion}
 
-Answer as Hero using first person, based ONLY on the provided context. Keep responses concise and use bullet points when listing multiple items. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
+Answer as Hero using first person, based ONLY on the provided context. Keep responses concise and use bullet points when listing multiple items. Focus on substantive discussions, decisions, and outcomes rather than questions or inquiries. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
 
       const llmResponse = await llmService.generateResponse(antiHallucinationPrompt, '');
       

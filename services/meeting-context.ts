@@ -81,14 +81,19 @@ class MeetingContextService {
             day: 'numeric' 
           });
           
-          // Skip meetings that only contain questions (no substantive discussion)
+          // Skip meetings that only contain questions or inquiries (no substantive discussion)
           const summary = meeting.summary?.toLowerCase() || '';
-          const isOnlyQuestions = summary.includes('asked') && 
-            (summary.includes('what') || summary.includes('how') || summary.includes('when') || summary.includes('where')) &&
-            !summary.includes('discussed') && !summary.includes('reported') && !summary.includes('suggested') && 
-            !summary.includes('agreed') && !summary.includes('decided') && !summary.includes('proposed');
+          const hasSubstantiveContent = summary.includes('discussed') || summary.includes('reported') || 
+            summary.includes('suggested') || summary.includes('agreed') || summary.includes('decided') || 
+            summary.includes('proposed') || summary.includes('centered on') || summary.includes('focused on') ||
+            summary.includes('identified') || summary.includes('addressed') || summary.includes('resolved') ||
+            summary.includes('implemented') || summary.includes('tracked') || summary.includes('monitored');
           
-          if (!isOnlyQuestions) {
+          const isOnlyQuestions = summary.includes('asked') || summary.includes('inquired') || summary.includes('summarized') ||
+            (summary.includes('what') || summary.includes('how') || summary.includes('when') || summary.includes('where')) &&
+            !hasSubstantiveContent;
+          
+          if (hasSubstantiveContent && !isOnlyQuestions) {
             context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
             context += `   Summary: ${meeting.summary}\n`;
           }
@@ -175,12 +180,20 @@ class MeetingContextService {
         
         // Skip messages that are only questions without substantive content
         const message = result.message?.toLowerCase() || '';
-        const isOnlyQuestion = message.includes('?') && 
-          (message.includes('what') || message.includes('how') || message.includes('when') || message.includes('where') || message.includes('do you')) &&
-          !message.includes('discussed') && !message.includes('reported') && !message.includes('suggested') && 
-          !message.includes('agreed') && !message.includes('decided') && !message.includes('proposed');
+        const hasSubstantiveContent = message.includes('discussed') || message.includes('reported') || 
+          message.includes('suggested') || message.includes('agreed') || message.includes('decided') || 
+          message.includes('proposed') || message.includes('centered on') || message.includes('focused on') ||
+          message.includes('identified') || message.includes('addressed') || message.includes('resolved') ||
+          message.includes('implemented') || message.includes('tracked') || message.includes('monitored') ||
+          message.includes('decreased') || message.includes('increased') || message.includes('failed') ||
+          message.includes('success') || message.includes('rate') || message.includes('transaction');
         
-        if (!isOnlyQuestion) {
+        const isOnlyQuestion = message.includes('?') && 
+          (message.includes('what') || message.includes('how') || message.includes('when') || message.includes('where') || 
+           message.includes('do you') || message.includes('can you') || message.includes('could you')) &&
+          !hasSubstantiveContent;
+        
+        if (hasSubstantiveContent && !isOnlyQuestion) {
           context += `\n${idx + 1}. [${similarity}% relevant] ${speaker}: "${result.message}"\n`;
           context += `   (From meeting on ${formattedDate})\n`;
         }
