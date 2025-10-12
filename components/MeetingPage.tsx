@@ -38,18 +38,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const sttServiceRef = useRef<STTService | null>(null);
   const messageIdCounter = useRef<number>(0);
   
-  // Hero query accumulation ref for 2-second pause detection
-  const heroQueryAccumulator = useRef<{
+  // Hero query accumulation - per participant using Map
+  // Each participant gets their own accumulator to prevent interference
+  const heroQueryAccumulators = useRef<Map<string, {
     isAccumulating: boolean;
     messages: string[];
     startTime: number;
     timeout: NodeJS.Timeout | null;
-  }>({
-    isAccumulating: false,
-    messages: [],
-    startTime: 0,
-    timeout: null
-  });
+  }>>(new Map());
+
+  // Helper to get or create accumulator for current participant
+  const getAccumulator = () => {
+    const participantId = participantName || 'local';
+    if (!heroQueryAccumulators.current.has(participantId)) {
+      heroQueryAccumulators.current.set(participantId, {
+        isAccumulating: false,
+        messages: [],
+        startTime: 0,
+        timeout: null
+      });
+    }
+    return heroQueryAccumulators.current.get(participantId)!;
+  };
 
   useEffect(() => {
     // Don't initialize until we have participant name
@@ -74,11 +84,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       if (sttServiceRef.current) {
         sttServiceRef.current.stopTranscription();
       }
-      // Clean up hero query accumulator timeout
-      const accumulatorTimeout = heroQueryAccumulator.current.timeout;
-      if (accumulatorTimeout) {
-        clearTimeout(accumulatorTimeout);
-      }
+      // Clean up all hero query accumulator timeouts
+      heroQueryAccumulators.current.forEach((accumulator, participantId) => {
+        if (accumulator.timeout) {
+          clearTimeout(accumulator.timeout);
+        }
+      });
+      heroQueryAccumulators.current.clear();
     };
   }, [roomName, participantName]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -640,12 +652,46 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           attemptPlay();
           }
         } else if (track.kind === Track.Kind.Audio) {
-          const audioElement = track.attach();
-          if (audioRef.current) {
-            audioRef.current.srcObject = audioElement.srcObject;
-          audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
-          console.log('✅ [TRACK] Remote audio attached to UI');
-          console.log(`🧪 [TEST] USER CAN NOW HEAR: ${participant.identity}'s audio feed`);
+          console.log(`🎵 [AUDIO-TRACK] Processing audio track from ${participant.identity}`);
+          console.log(`🎵 [AUDIO-TRACK] Track name: ${publication.trackName}, Source: ${track.source}`);
+          
+          // Special handling for Hero's TTS audio
+          if (publication.trackName === 'hero-tts-audio' || participant.identity.includes('hero')) {
+            console.log('🤖 [HERO-AUDIO] Hero TTS audio track detected! Creating dedicated audio element...');
+            
+            // Create a dedicated audio element for Hero's TTS
+            const heroAudioElement = document.createElement('audio');
+            heroAudioElement.autoplay = true;
+            heroAudioElement.volume = 1.0;
+            heroAudioElement.setAttribute('data-hero-audio', 'true');
+            
+            // Attach Hero's audio track
+            track.attach(heroAudioElement);
+            
+            console.log('✅ [HERO-AUDIO] Hero TTS audio element created and attached');
+            console.log('✅ [HERO-AUDIO] All participants should now hear Hero speaking!');
+            
+            // Play the audio
+            heroAudioElement.play()
+              .then(() => console.log('🔊 [HERO-AUDIO] Hero audio playing successfully'))
+              .catch(e => console.warn('⚠️ [HERO-AUDIO] Autoplay blocked:', e));
+            
+            // Clean up when track ends
+            track.once('ended', () => {
+              track.detach(heroAudioElement);
+              heroAudioElement.remove();
+              console.log('🧹 [HERO-AUDIO] Cleaned up Hero audio element');
+            });
+            
+          } else {
+            // Regular participant audio - attach to shared audio ref
+            const audioElement = track.attach();
+            if (audioRef.current) {
+              audioRef.current.srcObject = audioElement.srcObject;
+              audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
+              console.log('✅ [TRACK] Remote audio attached to UI');
+              console.log(`🧪 [TEST] USER CAN NOW HEAR: ${participant.identity}'s audio feed`);
+            }
           }
         }
       });
@@ -1042,11 +1088,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     // Also add to general messages for context
     addMessage({ ...message, isTranscript: true });
     
-    // Broadcast transcript to all participants if it's from local user
-    if (message.speaker === 'user' || message.speaker === 'local') {
-      const speakerName = room?.localParticipant?.identity || participantName || 'Participant 1';
-      await broadcastTranscript(message.text, speakerName, message.id);
-    }
+    // Always broadcast transcripts from local participant to sync with all others
+    // Use participantName for better display (instead of identity like "oko-75cd63cf")
+    const speakerName = participantName || room?.localParticipant?.name || 'Participant';
+    await broadcastTranscript(message.text, speakerName, message.id);
+    console.log(`📤 [TRANSCRIPT] Broadcasting to all participants: "${message.text}" by ${speakerName}`);
   };
 
   // Add system transcript (no broadcasting)
@@ -1165,99 +1211,110 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         if (hasHeroTrigger) {
           console.log('✅ [TRIGGER] Hero/Hiro trigger detected! Starting accumulation...');
           
+          // Get this participant's accumulator
+          const accumulator = getAccumulator();
+          
           // Start accumulating mode
-          heroQueryAccumulator.current.isAccumulating = true;
-          heroQueryAccumulator.current.messages = [result.text];
-          heroQueryAccumulator.current.startTime = Date.now();
+          accumulator.isAccumulating = true;
+          accumulator.messages = [result.text];
+          accumulator.startTime = Date.now();
           
           // Clear any existing timeout
-          if (heroQueryAccumulator.current.timeout) {
-            clearTimeout(heroQueryAccumulator.current.timeout);
+          if (accumulator.timeout) {
+            clearTimeout(accumulator.timeout);
           }
           
           // Set 2-second timeout to process accumulated query
-          heroQueryAccumulator.current.timeout = setTimeout(() => {
-            const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+          accumulator.timeout = setTimeout(() => {
+            const fullQuery = accumulator.messages.join(' ');
             console.log('⏰ [ACCUMULATOR] 2-second pause detected. Processing accumulated query:', fullQuery);
-            console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+            console.log('📝 [ACCUMULATOR] Total sentences collected:', accumulator.messages.length);
             
             handleHeroTrigger(fullQuery);
             
             // Reset accumulator
-            heroQueryAccumulator.current.isAccumulating = false;
-            heroQueryAccumulator.current.messages = [];
-            heroQueryAccumulator.current.timeout = null;
+            accumulator.isAccumulating = false;
+            accumulator.messages = [];
+            accumulator.timeout = null;
           }, 2000); // 2-second pause
           
-        } else if (heroQueryAccumulator.current.isAccumulating) {
-          // Continue accumulating if we're in accumulation mode
-          const elapsed = Date.now() - heroQueryAccumulator.current.startTime;
+        } else {
+          // Get this participant's accumulator
+          const accumulator = getAccumulator();
           
-          if (elapsed < 5000) { // Maximum 5 seconds of accumulation
-            console.log('📝 [ACCUMULATOR] Adding to query:', result.text);
-            heroQueryAccumulator.current.messages.push(result.text);
+          if (accumulator.isAccumulating) {
+            // Continue accumulating if we're in accumulation mode
+            const elapsed = Date.now() - accumulator.startTime;
             
-            // Reset the 2-second timeout
-            if (heroQueryAccumulator.current.timeout) {
-              clearTimeout(heroQueryAccumulator.current.timeout);
-            }
-            
-            heroQueryAccumulator.current.timeout = setTimeout(() => {
-              const fullQuery = heroQueryAccumulator.current.messages.join(' ');
-              console.log('⏰ [ACCUMULATOR] 2-second pause detected. Processing accumulated query:', fullQuery);
-              console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+            if (elapsed < 5000) { // Maximum 5 seconds of accumulation
+              console.log('📝 [ACCUMULATOR] Adding to query:', result.text);
+              accumulator.messages.push(result.text);
+              
+              // Reset the 2-second timeout
+              if (accumulator.timeout) {
+                clearTimeout(accumulator.timeout);
+              }
+              
+              accumulator.timeout = setTimeout(() => {
+                const fullQuery = accumulator.messages.join(' ');
+                console.log('⏰ [ACCUMULATOR] 2-second pause detected. Processing accumulated query:', fullQuery);
+                console.log('📝 [ACCUMULATOR] Total sentences collected:', accumulator.messages.length);
+                
+                handleHeroTrigger(fullQuery);
+                
+                // Reset accumulator
+                accumulator.isAccumulating = false;
+                accumulator.messages = [];
+                accumulator.timeout = null;
+              }, 2000); // 2-second pause
+            } else {
+              // Maximum accumulation time exceeded, process now
+              console.log('⚠️ [ACCUMULATOR] Maximum 5-second accumulation time reached. Processing now...');
+              const fullQuery = accumulator.messages.join(' ');
               
               handleHeroTrigger(fullQuery);
               
               // Reset accumulator
-              heroQueryAccumulator.current.isAccumulating = false;
-              heroQueryAccumulator.current.messages = [];
-              heroQueryAccumulator.current.timeout = null;
-            }, 2000); // 2-second pause
-          } else {
-            // Maximum accumulation time exceeded, process now
-            console.log('⚠️ [ACCUMULATOR] Maximum 5-second accumulation time reached. Processing now...');
-            const fullQuery = heroQueryAccumulator.current.messages.join(' ');
-            
-            handleHeroTrigger(fullQuery);
-            
-            // Reset accumulator
-            heroQueryAccumulator.current.isAccumulating = false;
-            heroQueryAccumulator.current.messages = [];
-            if (heroQueryAccumulator.current.timeout) {
-              clearTimeout(heroQueryAccumulator.current.timeout);
-              heroQueryAccumulator.current.timeout = null;
+              accumulator.isAccumulating = false;
+              accumulator.messages = [];
+              if (accumulator.timeout) {
+                clearTimeout(accumulator.timeout);
+                accumulator.timeout = null;
+              }
             }
+          } else {
+            console.log('❌ [TRIGGER] No Hero/Hiro trigger found in transcript');
           }
-        } else {
-          console.log('❌ [TRIGGER] No Hero/Hiro trigger found in transcript');
         }
       });
 
       // Set up interim result callback to keep accumulator alive
       if (sttServiceRef.current.onInterimResult) {
         sttServiceRef.current.onInterimResult((interimText: string) => {
+          // Get this participant's accumulator
+          const accumulator = getAccumulator();
+          
           // If we're accumulating and receive interim results, reset the timeout
-          if (heroQueryAccumulator.current.isAccumulating) {
+          if (accumulator.isAccumulating) {
             console.log('🔄 [ACCUMULATOR] Interim result detected, keeping accumulator alive:', interimText.substring(0, 50) + '...');
             
             // Clear existing timeout
-            if (heroQueryAccumulator.current.timeout) {
-              clearTimeout(heroQueryAccumulator.current.timeout);
+            if (accumulator.timeout) {
+              clearTimeout(accumulator.timeout);
             }
             
             // Reset 2-second timeout
-            heroQueryAccumulator.current.timeout = setTimeout(() => {
-              const fullQuery = heroQueryAccumulator.current.messages.join(' ');
+            accumulator.timeout = setTimeout(() => {
+              const fullQuery = accumulator.messages.join(' ');
               console.log('⏰ [ACCUMULATOR] 2-second pause detected after interim results. Processing accumulated query:', fullQuery);
-              console.log('📝 [ACCUMULATOR] Total sentences collected:', heroQueryAccumulator.current.messages.length);
+              console.log('📝 [ACCUMULATOR] Total sentences collected:', accumulator.messages.length);
               
               handleHeroTrigger(fullQuery);
               
               // Reset accumulator
-              heroQueryAccumulator.current.isAccumulating = false;
-              heroQueryAccumulator.current.messages = [];
-              heroQueryAccumulator.current.timeout = null;
+              accumulator.isAccumulating = false;
+              accumulator.messages = [];
+              accumulator.timeout = null;
             }, 2000); // 2-second pause
           }
         });
