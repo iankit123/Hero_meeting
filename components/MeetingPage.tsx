@@ -2824,7 +2824,34 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                       })}
                     </span>
                   </div>
-                  <p style={{ margin: '0', color: 'white' }}>{message.text}</p>
+                  <div style={{ margin: '0', color: 'white' }}>
+                    {message.text.split('\n').map((line, index) => {
+                      // Handle bullet points
+                      if (line.trim().startsWith('* ')) {
+                        return (
+                          <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '4px' }}>
+                            <span style={{ color: '#60a5fa', marginRight: '8px', marginTop: '2px' }}>•</span>
+                            <span>{line.trim().substring(2)}</span>
+                          </div>
+                        );
+                      }
+                      // Handle numbered lists
+                      if (line.trim().match(/^\d+\.\s/)) {
+                        return (
+                          <div key={index} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '4px' }}>
+                            <span style={{ color: '#60a5fa', marginRight: '8px', marginTop: '2px' }}>{line.trim().match(/^\d+/)?.[0]}.</span>
+                            <span>{line.trim().replace(/^\d+\.\s/, '')}</span>
+                          </div>
+                        );
+                      }
+                      // Handle regular lines
+                      return (
+                        <p key={index} style={{ margin: index > 0 ? '8px 0 0 0' : '0' }}>
+                          {line}
+                        </p>
+                      );
+                    })}
+                  </div>
                 </div>
               ))
             )}
