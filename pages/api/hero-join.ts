@@ -46,9 +46,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
     } else if (message) {
-      console.log('\n🎯 [API] === HERO PIPELINE START ===');
-      console.log('📥 [API] Received message:', message);
-      console.log('📝 [API] Context provided:', context?.substring(0, 100) + '...');
+      // Pipeline start (condensed logging)
+      console.log('\n🎯 [API] HERO pipeline start');
+      console.log('📥 [API] Message:', message);
       
       // Note: User message is already stored by frontend via /api/store-speech
       // So we don't need to store it again here to avoid duplicates
@@ -61,21 +61,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
       const ttsService = createTTSService(selectedTtsProvider);
       
-      console.log(`🎵 [TTS] Using provider: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] Provider: ${selectedTtsProvider}`);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
-      console.log('🔍 [API] Checking trigger phrase against:', message);
+      // Trigger detection
       
       if (!triggerPhrase.test(message)) {
-        console.log('❌ [API] No trigger phrase detected');
+        console.log('❌ [API] No trigger phrase');
         return res.status(200).json({
           success: true,
           message: 'No trigger phrase detected',
         });
       }
 
-      console.log('✅ [API] Hero/Hiro trigger phrase detected!');
+      console.log('✅ [API] Trigger detected');
       
       // Extract the question after the trigger phrase
       const question = message.replace(triggerPhrase, '').trim();
@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // If no specific question, provide a default greeting response
       const finalQuestion = question || 'Hello! How can I help you today?';
       
-      console.log('❓ [API] Extracted question:', finalQuestion);
+      console.log('❓ [API] Question:', finalQuestion);
       
       // Get conversation context from storage
       const conversationContext = contextService.getContext(roomName, 15);
@@ -119,41 +119,59 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         enhancedContext += `\n\nCurrent Question: ${finalQuestion}`;
       }
       
-      console.log('\n🧠 [GEMINI] === SENDING TO LLM ===');
-      console.log('📤 [GEMINI] Sending to Gemini AI with context:', finalQuestion);
-      console.log('🔍 [DEBUG] Enhanced context being sent:', enhancedContext.substring(0, 500) + '...');
+      console.log('\n🧠 [GEMINI] Send');
+      // console.debug('🔍 [DEBUG] Enhanced context:', enhancedContext.substring(0, 500) + '...');
 
-      // Generate LLM response with anti-hallucination prompt
-      const hasContext = enhancedContext && enhancedContext.trim().length > 0;
+      // === General vs Meeting heuristic ===
+      const qLower = finalQuestion.toLowerCase();
+      const mentionsMeeting = /(meeting|minutes|notes|summary|agenda|discussion|action items|participants|org|organization|project|ticket|sprint|retro|standup|call|yesterday|last time)/i.test(qLower);
+      const genericFacty = /(capital|who is|what is|when is|define|explain|country|math|formula|weather|distance|population|president|prime minister|news|time in|how to|why)/i.test(qLower);
+      const hasPastContext = !!pastMeetingContext && pastMeetingContext.trim().length > 0;
       
-      const antiHallucinationPrompt = `You are Hero, an AI assistant participating in meetings. You should respond as Hero using first person ("I", "me", "my").
+      const classifyAsMeeting = hasPastContext && (mentionsMeeting || (!genericFacty && qLower.length < 400));
+      const classifyAsGeneral = genericFacty || (!hasPastContext && !mentionsMeeting);
 
-CRITICAL RULES:
-1. ONLY use information explicitly provided in the context below
-2. NEVER make up names, people, or details not mentioned in the context
-3. NEVER assume someone participated in a meeting unless explicitly shown
-4. If you don't have specific information, say "I don't have that specific information"
-5. Do not reference people who are not mentioned in the provided context
-6. Be precise and factual - avoid speculation
-7. Pay attention to meeting dates and participants - don't assume temporal relationships
-8. Always respond as Hero using first person ("I", "me", "my")
-9. Keep responses concise and use bullet points for multiple items
-10. Only reference meetings that had substantive discussions, not just questions
-11. Use simplified date format (e.g., "October 12" instead of "Sunday, October 12, 2025")
-12. ${hasContext ? 'Use the context provided below' : 'NO CONTEXT PROVIDED - do not make up any details or names'}
+      // Build prompts for both modes
+      const meetingPrompt = `You are Hero, an AI assistant participating in meetings. Respond as Hero using first person ("I", "me", "my").
 
-Context: ${enhancedContext || 'NO CONTEXT AVAILABLE'}
+RULES (MEETING MODE):
+- Use ONLY the meeting context below. Do not invent people, dates, or decisions.
+- If context lacks the answer, say: "I don't have that in my meeting notes."
+- Keep answers concise; use bullet points for multiple items.
+
+Context:
+${enhancedContext || 'NO CONTEXT AVAILABLE'}
 
 Question: ${finalQuestion}
 
-Answer as Hero using first person, based ONLY on the provided context. Keep responses concise and use bullet points when listing multiple items. Focus on substantive discussions, decisions, and outcomes rather than questions or inquiries. ${hasContext ? 'Do not make assumptions about who participated in which meetings.' : 'Since no context is available, only provide general information without mentioning specific people or meetings.'}`;
+Answer as Hero based strictly on the meeting context.`;
 
-      const llmResponse = await llmService.generateResponse(antiHallucinationPrompt, '');
+      const generalPrompt = `You are Hero, an AI assistant. Respond as Hero using first person ("I", "me", "my").
+
+RULES (GENERAL KNOWLEDGE MODE):
+- Provide a direct, accurate answer using general knowledge.
+- Be concise and practical; use a short paragraph or bullets.
+- If useful, add 1-2 clarifying facts.
+- Do NOT reference internal meetings unless explicitly asked.
+
+Question: ${finalQuestion}`;
+
+      // Choose prompt
+      const promptToUse = classifyAsMeeting ? meetingPrompt : generalPrompt;
+      const llmResponse = await llmService.generateResponse(promptToUse, '');
       
-      console.log('📥 [GEMINI] Received response from Gemini:');
-      console.log('📥 [GEMINI] Response length:', llmResponse.text?.length || 0, 'characters');
-      console.log('📥 [GEMINI] Response preview:', llmResponse.text?.substring(0, 100) + '...');
+      console.log('📥 [GEMINI] Received');
       
+      // If model still refuses on a general ask, retry once in general mode
+      const refusalLike = /i\s+do\s+not\s+have|i\s+don['’]t\s+have|no\s+information|not\s+in\s+my\s+records/i;
+      if (classifyAsGeneral && refusalLike.test(llmResponse.text || '')) {
+        console.log('🔁 [GEMINI] Retrying in strict general mode due to refusal');
+        const retry = await llmService.generateResponse(generalPrompt, '');
+        if ((retry.text || '').trim().length > 0) {
+          llmResponse.text = retry.text;
+        }
+      }
+
       // Clean the response text for TTS (remove markdown formatting)
       const cleanTextForTTS = llmResponse.text
         .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
@@ -166,10 +184,7 @@ Answer as Hero using first person, based ONLY on the provided context. Keep resp
         .replace(/\s+/g, ' ') // Normalize whitespace
         .trim();
 
-      console.log('\n🎵 [ELEVENLABS] === SENDING TO TTS ===');
-      console.log('🧹 [TTS] Original text:', llmResponse.text.substring(0, 100) + '...');
-      console.log('🧹 [TTS] Cleaned text:', cleanTextForTTS.substring(0, 100) + '...');
-      console.log('📤 [ELEVENLABS] Sending text to TTS:', cleanTextForTTS?.substring(0, 50) + '...');
+      console.log('\n🎵 [TTS] Generate audio');
 
       // Generate TTS audio with fallback
       let ttsResult;
@@ -188,17 +203,15 @@ Answer as Hero using first person, based ONLY on the provided context. Keep resp
         
         console.log(`🔄 [TTS] Trying fallback text: "${fallbackText}"`);
         ttsResult = await ttsService.synthesize(fallbackText);
-        console.log('✅ [TTS] Fallback audio generated successfully');
+        console.log('✅ [TTS] Fallback audio generated');
       }
       
-      console.log('📥 [ELEVENLABS] Received audio from TTS:');
-      console.log('📥 [ELEVENLABS] Audio buffer size:', ttsResult.audioBuffer?.length || 0, 'bytes');
-      console.log('📥 [ELEVENLABS] Audio duration:', ttsResult.duration, 'seconds');
+      console.log('📥 [TTS] Audio ready:', ttsResult.duration, 's');
       
       // Store the Hero response in context (use original text for context, cleaned text for TTS)
       contextService.addEntry(roomName, 'hero', llmResponse.text, orgName);
       
-      console.log('\n✅ [API] === HERO PIPELINE COMPLETE ===\n');
+      console.log('\n✅ [API] HERO pipeline complete');
 
       res.status(200).json({
         success: true,

@@ -425,7 +425,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     console.log('🎧 [EVENTS] Setting up room event listeners...');
     
     // Set up data channel for Hero message and transcript broadcasting
-    newRoom.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
+    newRoom.on(RoomEvent.DataReceived, async (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const data = JSON.parse(new TextDecoder().decode(payload));
         console.log('📨 [DATA] Received data from', participant?.identity || 'unknown:', data);
@@ -459,14 +459,15 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             });
           }, estimatedDuration);
         } else if (data.type === 'transcript') {
-          console.log('📝 [TRANSCRIPT] Broadcasting transcript to all participants');
-          addTranscript({
+          console.log('📝 [TRANSCRIPT] Received transcript from another participant');
+          // Pass false to prevent re-broadcasting (avoid infinite loop)
+          await addTranscript({
             id: data.messageId,
             text: data.text,
             speaker: data.speaker,
             timestamp: data.timestamp,
             isTranscript: true
-          });
+          }, false);  // Don't re-broadcast!
         }
       } catch (error) {
         console.warn('⚠️ [DATA] Failed to parse received data:', error);
@@ -655,34 +656,59 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           console.log(`🎵 [AUDIO-TRACK] Processing audio track from ${participant.identity}`);
           console.log(`🎵 [AUDIO-TRACK] Track name: ${publication.trackName}, Source: ${track.source}`);
           
-          // Special handling for Hero's TTS audio
-          if (publication.trackName === 'hero-tts-audio' || participant.identity.includes('hero')) {
-            console.log('🤖 [HERO-AUDIO] Hero TTS audio track detected! Creating dedicated audio element...');
+          // Check if this is Hero's TTS audio by track name (published by any participant)
+          if (publication.trackName === 'hero-tts-audio') {
+            console.log('🤖 [HERO-AUDIO] Hero TTS audio track detected!');
+            console.log('🤖 [HERO-AUDIO] Published by:', participant.identity);
+            console.log('🤖 [HERO-AUDIO] Creating dedicated audio element for playback...');
             
             // Create a dedicated audio element for Hero's TTS
             const heroAudioElement = document.createElement('audio');
             heroAudioElement.autoplay = true;
             heroAudioElement.volume = 1.0;
             heroAudioElement.setAttribute('data-hero-audio', 'true');
+            heroAudioElement.setAttribute('data-from-participant', participant.identity);
             
             // Attach Hero's audio track
             track.attach(heroAudioElement);
             
             console.log('✅ [HERO-AUDIO] Hero TTS audio element created and attached');
-            console.log('✅ [HERO-AUDIO] All participants should now hear Hero speaking!');
+            console.log('✅ [HERO-AUDIO] All participants in the room should now hear Hero speaking!');
             
-            // Play the audio
-            heroAudioElement.play()
-              .then(() => console.log('🔊 [HERO-AUDIO] Hero audio playing successfully'))
-              .catch(e => console.warn('⚠️ [HERO-AUDIO] Autoplay blocked:', e));
+            // Play the audio with retry logic
+            const playHeroAudio = async (attempt = 1) => {
+              try {
+                await heroAudioElement.play();
+                console.log('🔊 [HERO-AUDIO] Hero audio playing successfully!');
+              } catch (playError) {
+                console.warn(`⚠️ [HERO-AUDIO] Play attempt ${attempt} blocked:`, playError);
+                if (attempt < 3) {
+                  // User interaction might be needed - retry with delay
+                  setTimeout(() => playHeroAudio(attempt + 1), 200);
+                } else {
+                  console.error('❌ [HERO-AUDIO] Autoplay failed after 3 attempts. User interaction may be needed.');
+                }
+              }
+            };
+            
+            playHeroAudio();
             
             // Clean up when track ends
             track.once('ended', () => {
+              console.log('🧹 [HERO-AUDIO] Hero audio track ended, cleaning up...');
               track.detach(heroAudioElement);
               heroAudioElement.remove();
-              console.log('🧹 [HERO-AUDIO] Cleaned up Hero audio element');
+              console.log('✅ [HERO-AUDIO] Hero audio element removed');
             });
             
+          } else if (participant.identity === 'hero-bot') {
+            // Hero bot's microphone (if Hero actually joins as a participant)
+            console.log('🤖 [HERO-MIC] Hero bot microphone audio detected');
+            const audioElement = track.attach();
+            if (audioRef.current) {
+              audioRef.current.srcObject = audioElement.srcObject;
+              audioRef.current.play().catch(e => console.warn('Audio autoplay blocked:', e));
+            }
           } else {
             // Regular participant audio - attach to shared audio ref
             const audioElement = track.attach();
@@ -780,25 +806,18 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.log('🧪 [TEST] Cannot run test - room not connected');
       return;
     }
-    console.log(`🧪 [TEST] === BIDIRECTIONAL VISIBILITY TEST START ===`);
-    console.log(`🧪 [TEST] Test running for: ${testRoom.localParticipant.identity}`);
-    console.log(`🧪 [TEST] Test timestamp: ${new Date().toISOString()}`);
+    // Reduce verbosity: keep a concise header only
+    console.log(`🧪 [TEST] Start - ${testRoom.localParticipant.identity} @ ${new Date().toISOString()}`);
     
     // Test 1: Local Media Status
     const localVideoTracks = Array.from(testRoom.localParticipant.videoTrackPublications.values());
     const localAudioTracks = Array.from(testRoom.localParticipant.audioTrackPublications.values());
-    console.log(`🧪 [TEST] LOCAL MEDIA STATUS:`);
-    console.log(`🧪 [TEST] LOCAL VIDEO: ${localVideoTracks.length > 0 ? '✅ PUBLISHED' : '❌ NOT PUBLISHED'}`);
-    console.log(`🧪 [TEST] LOCAL AUDIO: ${localAudioTracks.length > 0 ? '✅ PUBLISHED' : '❌ NOT PUBLISHED'}`);
+    console.log(`🧪 [TEST] Local: video=${localVideoTracks.length > 0 ? 'on' : 'off'}, audio=${localAudioTracks.length > 0 ? 'on' : 'off'}`);
     
     // Test 2: Local Video Element Status
     if (localVideoRef.current) {
       const localVideo = localVideoRef.current;
-      console.log(`🧪 [TEST] LOCAL VIDEO ELEMENT:`);
-      console.log(`🧪 [TEST] Video stream exists: ${localVideo.srcObject ? '✅ YES' : '❌ NO'}`);
-      console.log(`🧪 [TEST] Video paused: ${localVideo.paused ? '❌ YES' : '✅ NO'}`);
-      console.log(`🧪 [TEST] Video ready state: ${localVideo.readyState}`);
-      console.log(`🧪 [TEST] Video dimensions: ${localVideo.videoWidth}x${localVideo.videoHeight}`);
+      console.log(`🧪 [TEST] Local video: ${localVideo.srcObject ? 'stream' : 'no-stream'}, ${localVideo.videoWidth}x${localVideo.videoHeight}`);
       
       // Additional debugging for stream issues
       if (localVideo.srcObject) {
@@ -870,16 +889,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     
     // Test 3: Remote Participants Status
     const remoteParticipants = Array.from(testRoom.remoteParticipants.values());
-    console.log(`🧪 [TEST] REMOTE PARTICIPANTS: ${remoteParticipants.length}`);
+    console.log(`🧪 [TEST] Remote participants: ${remoteParticipants.length}`);
     
     remoteParticipants.forEach((participant, index) => {
       const participantVideoTracks = Array.from(participant.videoTrackPublications.values());
       const participantAudioTracks = Array.from(participant.audioTrackPublications.values());
       
-      console.log(`🧪 [TEST] PARTICIPANT ${index + 1}: ${participant.identity}`);
-      console.log(`🧪 [TEST] Has video: ${participantVideoTracks.length > 0 ? '✅ YES' : '❌ NO'}`);
-      console.log(`🧪 [TEST] Has audio: ${participantAudioTracks.length > 0 ? '✅ YES' : '❌ NO'}`);
-      console.log(`🧪 [TEST] Connection state: ${participant.connectionQuality}`);
+      console.log(`🧪 [TEST] P${index + 1} ${participant.identity}: video=${participantVideoTracks.length > 0 ? 'on' : 'off'}, audio=${participantAudioTracks.length > 0 ? 'on' : 'off'}, quality=${participant.connectionQuality}`);
     });
     
     // Test 4: Local video preview visibility
@@ -892,12 +908,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     
     // Test 5: Remote video feeds visibility  
     const remoteVideoElements = document.querySelectorAll('[data-test-id^="remote-video-"]') as NodeListOf<HTMLVideoElement>;
-    console.log(`🧪 [TEST] REMOTE VIDEO FEEDS: ${remoteVideoElements.length} visible`);
+    console.log(`🧪 [TEST] Remote video feeds visible: ${remoteVideoElements.length}`);
     remoteVideoElements.forEach((videoEl, index) => {
       console.log(`🧪 [TEST] Remote video ${index + 1}: ${videoEl.offsetWidth}x${videoEl.offsetHeight} (${videoEl.getAttribute('data-participant')})`);
     });
     
-    console.log(`🧪 [TEST] === TEST COMPLETE ===`);
+    console.log(`🧪 [TEST] Complete`);
     
     // Display test results in UI
     const testSummary = {
@@ -908,7 +924,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       remoteVideoFeedsVisible: remoteVideoElements.length
     };
     
-      console.log(`🧪 [TEST] SUMMARY:`, testSummary);
+      console.log(`🧪 [TEST] Summary:`, testSummary);
       return testSummary;
     };
 
@@ -975,7 +991,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     const checkForMissedTracks = () => {
       if (!room || room.state !== 'connected') return;
       
-      console.log(`🔍 [MISSED-TRACK-CHECK] Checking for missed track subscriptions...`);
+      // Verbose heartbeat disabled in production; enable when diagnosing track attach issues
+      // console.log(`🔍 [MISSED-TRACK-CHECK] Checking for missed track subscriptions...`);
       
       const remoteParticipants = Array.from(room.remoteParticipants.values());
       remoteParticipants.forEach(participant => {
@@ -1083,16 +1100,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     setMessages(prev => [...prev, message]);
   };
   
-  const addTranscript = async (message: ChatMessage) => {
+  const addTranscript = async (message: ChatMessage, shouldBroadcast: boolean = true) => {
     setTranscript(prev => [...prev, message]);
     // Also add to general messages for context
     addMessage({ ...message, isTranscript: true });
     
-    // Always broadcast transcripts from local participant to sync with all others
-    // Use participantName for better display (instead of identity like "oko-75cd63cf")
-    const speakerName = participantName || room?.localParticipant?.name || 'Participant';
-    await broadcastTranscript(message.text, speakerName, message.id);
-    console.log(`📤 [TRANSCRIPT] Broadcasting to all participants: "${message.text}" by ${speakerName}`);
+    // Only broadcast if this is from the local participant (not from receiving a broadcast)
+    if (shouldBroadcast && room && room.state === 'connected') {
+      const speakerName = participantName || room?.localParticipant?.name || 'Participant';
+      await broadcastTranscript(message.text, speakerName, message.id);
+      console.log(`📤 [TRANSCRIPT] Broadcasting to all participants: "${message.text}" by ${speakerName}`);
+    } else if (!shouldBroadcast) {
+      console.log(`📥 [TRANSCRIPT] Received broadcast, not re-broadcasting: "${message.text}"`);
+    }
   };
 
   // Add system transcript (no broadcasting)
