@@ -96,13 +96,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Get relevant past meeting context if org name is provided
       let pastMeetingContext = '';
       if (orgName) {
-        console.log(`🔍 [PAST-MEETINGS] Retrieving past meetings for org: ${orgName}`);
+        console.log(`\n🔍 [PAST-MEETINGS] ===== PAST MEETING RETRIEVAL START =====`);
+        console.log(`🔍 [PAST-MEETINGS] Org name: "${orgName}"`);
+        console.log(`🔍 [PAST-MEETINGS] Question: "${finalQuestion}"`);
         pastMeetingContext = await meetingContextService.getRelevantContext(orgName, finalQuestion, 2);
         if (pastMeetingContext) {
-          console.log(`✅ [PAST-MEETINGS] Retrieved past meeting context (${pastMeetingContext.length} chars)`);
+          console.log(`✅ [PAST-MEETINGS] Retrieved context (${pastMeetingContext.length} chars):`);
+          console.log(pastMeetingContext.substring(0, 500) + '...');
         } else {
-          console.log(`ℹ️ [PAST-MEETINGS] No relevant past meetings found`);
+          console.log(`⚠️ [PAST-MEETINGS] NO RELEVANT PAST MEETINGS FOUND - returning empty context`);
         }
+        console.log(`🔍 [PAST-MEETINGS] ===== PAST MEETING RETRIEVAL END =====\n`);
+      } else {
+        console.log(`⚠️ [PAST-MEETINGS] No org name provided - skipping past meeting lookup`);
       }
       
       // Create enhanced context for the LLM

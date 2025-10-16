@@ -1,5 +1,7 @@
 // @ts-ignore
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+// Use global fetch available in Node 18+ and Next.js runtime
+const fetchFn: typeof fetch = (global as any).fetch;
 
 export interface LLMResponse {
   text: string;
@@ -79,7 +81,66 @@ export class GeminiLLMService implements LLMService {
   }
 }
 
+export class GroqLLMService implements LLMService {
+  private apiKey: string;
+  private model: string;
+
+  constructor() {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      throw new Error("GROQ_API_KEY environment variable is required");
+    }
+    this.apiKey = apiKey;
+    this.model = process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+  }
+
+  async generateResponse(prompt: string, context?: string): Promise<LLMResponse> {
+    const system = context
+      ? `You are Hero, an AI meeting assistant. Use ONLY the provided meeting context. If the context doesn't contain the answer, reply: "I don't have that in my meeting notes."\n\nContext:\n${context}`
+      : 'You are Hero, an AI assistant.';
+
+    const body = {
+      model: this.model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.4,
+    } as any;
+
+    const res = await fetchFn('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Groq API error: ${res.status} - ${text}`);
+    }
+
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content || '';
+    return { text };
+  }
+}
+
 // Factory function to create LLM service (easily swappable)
 export function createLLMService(): LLMService {
-  return new GeminiLLMService();
+  const provider = (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
+  try {
+    if (provider === 'groq') {
+      return new GroqLLMService();
+    }
+    return new GeminiLLMService();
+  } catch (e) {
+    // Fallback: if selected provider fails to init, try the other one
+    if (provider === 'groq') {
+      return new GeminiLLMService();
+    }
+    return new GroqLLMService();
+  }
 }

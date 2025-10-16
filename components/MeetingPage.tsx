@@ -37,6 +37,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const sttServiceRef = useRef<STTService | null>(null);
   const messageIdCounter = useRef<number>(0);
+  const transcriptContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Refs to avoid stale closures in callbacks
+  const roomRef = useRef<Room | null>(null);
+  const participantNameRef = useRef<string>('');
+  const orgNameRef = useRef<string>('');
   
   // Hero query accumulation - per participant using Map
   // Each participant gets their own accumulator to prevent interference
@@ -60,6 +66,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
     return heroQueryAccumulators.current.get(participantId)!;
   };
+
+  // Keep refs in sync with state to avoid stale closures
+  useEffect(() => {
+    roomRef.current = room;
+  }, [room]);
+
+  useEffect(() => {
+    participantNameRef.current = participantName;
+  }, [participantName]);
+
+  useEffect(() => {
+    orgNameRef.current = orgName;
+  }, [orgName]);
 
   useEffect(() => {
     // Don't initialize until we have participant name
@@ -1106,12 +1125,18 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     addMessage({ ...message, isTranscript: true });
     
     // Only broadcast if this is from the local participant (not from receiving a broadcast)
-    if (shouldBroadcast && room && room.state === 'connected') {
-      const speakerName = participantName || room?.localParticipant?.name || 'Participant';
+    // Use refs to avoid stale closure issues
+    const currentRoom = roomRef.current;
+    const currentParticipantName = participantNameRef.current;
+    
+    if (shouldBroadcast && currentRoom && currentRoom.state === 'connected') {
+      const speakerName = currentParticipantName || currentRoom?.localParticipant?.name || 'Participant';
       await broadcastTranscript(message.text, speakerName, message.id);
       console.log(`📤 [TRANSCRIPT] Broadcasting to all participants: "${message.text}" by ${speakerName}`);
     } else if (!shouldBroadcast) {
       console.log(`📥 [TRANSCRIPT] Received broadcast, not re-broadcasting: "${message.text}"`);
+    } else {
+      console.warn(`⚠️ [TRANSCRIPT] Cannot broadcast - room state: ${currentRoom?.state || 'null'}, shouldBroadcast: ${shouldBroadcast}`);
     }
   };
 
@@ -1120,9 +1145,20 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     setTranscript(prev => [...prev, message]);
     addMessage({ ...message, isTranscript: true });
   };
+
+  // Auto-scroll transcript to bottom on new entries
+  useEffect(() => {
+    if (transcriptContainerRef.current) {
+      try {
+        transcriptContainerRef.current.scrollTop = transcriptContainerRef.current.scrollHeight;
+      } catch {}
+    }
+  }, [transcript.length]);
   
   // Store speech in context via API
   const storeSpeechInContext = async (speechText: string) => {
+    const currentParticipantName = participantNameRef.current;
+    const currentOrgName = orgNameRef.current;
     try {
       await fetch('/api/store-speech', {
         method: 'POST',
@@ -1132,11 +1168,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           speech: speechText,
-          speaker: participantName || 'user',
-          orgName: orgName || undefined
+          speaker: currentParticipantName || 'user',
+          orgName: currentOrgName || undefined
         }),
       });
-      console.log(`📝 [CONTEXT] Stored speech in context for ${participantName}:`, speechText.substring(0, 50) + '...');
+      console.log(`📝 [CONTEXT] Stored speech in context for ${currentParticipantName}:`, speechText.substring(0, 50) + '...');
     } catch (error) {
       console.warn('⚠️ [CONTEXT] Failed to store speech in context:', error);
     }
@@ -1144,8 +1180,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   // Broadcast Hero message to all participants via LiveKit data channel
   const broadcastHeroMessage = async (text: string, messageId: string) => {
-    if (!room || room.state !== 'connected') {
-      console.warn('⚠️ [BROADCAST] No room available for broadcasting. Room:', room?.state || 'null');
+    const currentRoom = roomRef.current;
+    if (!currentRoom || currentRoom.state !== 'connected') {
+      console.warn('⚠️ [BROADCAST] No room available for broadcasting. Room:', currentRoom?.state || 'null');
       return;
     }
 
@@ -1158,7 +1195,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       };
 
       const payload = new TextEncoder().encode(JSON.stringify(messageData));
-      await room.localParticipant.publishData(payload, { reliable: true });
+      await currentRoom.localParticipant.publishData(payload, { reliable: true });
       console.log('📤 [BROADCAST] Hero message broadcasted to all participants:', text);
     } catch (error) {
       console.error('❌ [BROADCAST] Failed to broadcast Hero message:', error);
@@ -1167,8 +1204,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   // Broadcast transcript to all participants via LiveKit data channel
   const broadcastTranscript = async (text: string, speaker: string, messageId: string) => {
-    if (!room || room.state !== 'connected') {
-      console.warn('⚠️ [TRANSCRIPT-BROADCAST] No room available for broadcasting. Room:', room?.state || 'null');
+    const currentRoom = roomRef.current;
+    if (!currentRoom || currentRoom.state !== 'connected') {
+      console.warn('⚠️ [TRANSCRIPT-BROADCAST] No room available for broadcasting. Room:', currentRoom?.state || 'null');
       return;
     }
 
@@ -1182,7 +1220,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       };
 
       const payload = new TextEncoder().encode(JSON.stringify(transcriptData));
-      await room.localParticipant.publishData(payload, { reliable: true });
+      await currentRoom.localParticipant.publishData(payload, { reliable: true });
       console.log('📤 [TRANSCRIPT-BROADCAST] Transcript broadcasted to all participants:', text, 'by', speaker);
     } catch (error) {
       console.error('❌ [TRANSCRIPT-BROADCAST] Failed to broadcast transcript:', error);
@@ -1210,8 +1248,10 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       sttServiceRef.current.onTranscript(async (result: STTResult) => {
         console.log('🎤 [STT] Transcript received:', result.text);
         
-        // Use participant identity for speaker identification
-        const speakerName = room?.localParticipant?.identity || participantName || 'Participant 1';
+        // Use participant name (not identity with suffix) for speaker identification
+        // Use refs to avoid stale closure
+        const currentParticipantName = participantNameRef.current;
+        const speakerName = currentParticipantName || room?.localParticipant?.name || 'Participant';
         
         await addTranscript({
           id: generateMessageId(),
@@ -1368,6 +1408,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     console.log('🚀 [FRONTEND] Room:', roomName);
     console.log('🚀 [FRONTEND] Message:', transcript);
     
+    const currentOrgName = orgNameRef.current;
+    
     try {
       console.log('🌐 [FRONTEND] Making API call to /api/hero-join...');
       
@@ -1380,7 +1422,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           roomName,
           message: transcript,
           ttsProvider: ttsProvider,
-          orgName: orgName
+          orgName: currentOrgName
         }),
       });
       
@@ -1421,8 +1463,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         
         // Play TTS audio if available - broadcast to all participants
         if (data.audioBuffer) {
-          if (!room || room.state !== 'connected') {
-            console.warn('❌ [FRONTEND] Room not available for broadcasting. Room:', room?.state || 'null');
+          const currentRoom = roomRef.current;
+          if (!currentRoom || currentRoom.state !== 'connected') {
+            console.warn('❌ [FRONTEND] Room not available for broadcasting. Room:', currentRoom?.state || 'null');
             // Fallback to local playback only
             try {
               // Initialize audio context if not already done
@@ -1449,8 +1492,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
             console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
             console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
-            console.log('🎵 [FRONTEND] Room state:', room.state);
-            console.log('🎵 [FRONTEND] Room participants:', room.numParticipants);
+            console.log('🎵 [FRONTEND] Room state:', currentRoom.state);
+            console.log('🎵 [FRONTEND] Room participants:', currentRoom.numParticipants);
           
           try {
             // Initialize audio context if not already done
@@ -1494,8 +1537,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 readyState: audioTrack.readyState
               });
               
-              // Publish audio track to LiveKit so all participants can hear
-              const publication = await room.localParticipant.publishTrack(audioTrack, {
+            // Publish audio track to LiveKit so all participants can hear
+            const publication = await currentRoom.localParticipant.publishTrack(audioTrack, {
                 name: 'hero-tts-audio',
                 source: 'microphone' as any, // Use microphone source for compatibility
               });
@@ -1513,7 +1556,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               console.log('✅ [FRONTEND] Audio track enabled for broadcasting');
               
               // Notify all participants about the Hero audio
-              console.log('📢 [FRONTEND] Broadcasting Hero audio to', room.numParticipants, 'participants');
+              console.log('📢 [FRONTEND] Broadcasting Hero audio to', currentRoom.numParticipants, 'participants');
               
               // Start playback
             source.start();
@@ -1523,7 +1566,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               source.onended = async () => {
                 console.log('🧹 [FRONTEND] TTS playback ended, cleaning up LiveKit track...');
                 try {
-                  await room.localParticipant.unpublishTrack(audioTrack);
+                  await currentRoom.localParticipant.unpublishTrack(audioTrack);
                   audioTrack.stop();
                   console.log('✅ [FRONTEND] Hero TTS audio track cleaned up');
                 } catch (cleanupError) {
@@ -1972,7 +2015,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   }
 
   return (
-    <div className="meeting-container" style={{ height: '100vh', overflow: 'hidden' }}>
+    <div className="meeting-container" style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       {/* Name Input Modal */}
       <NameInputModal 
         isOpen={showNameModal} 
@@ -1980,7 +2023,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       />
       
       {/* Main Video Area */}
-      <div className="video-area" style={{ height: '100vh', overflow: 'hidden' }}>
+      <div className="video-area" style={{ flex: 1, height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {/* Header */}
         <div style={{
           display: 'flex',
@@ -2082,13 +2125,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         {/* Main Video Content - Grid Layout */}
         <div style={{
           position: 'relative',
-          height: '100%',
+          flex: 1,
           background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
-          padding: '80px 20px 100px 20px'
+          padding: '20px'
         }}>
           {/* Background Pattern */}
           <div style={{
@@ -2235,20 +2278,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
         {/* Controls */}
         <div style={{
-          position: 'absolute',
-          bottom: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'center',
           gap: '16px',
-          padding: '16px 24px',
-          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.9) 100%)',
-          borderRadius: '20px',
-          border: '1px solid rgba(59, 130, 246, 0.2)',
-          backdropFilter: 'blur(20px)',
-          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.3)',
-          zIndex: 10
+          padding: '20px',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          borderTop: '1px solid rgba(59, 130, 246, 0.1)'
         }}>
           <button 
             onClick={toggleAudio} 
@@ -2386,7 +2422,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         borderLeft: '1px solid rgba(59, 130, 246, 0.1)',
         padding: '24px',
         overflowY: 'auto',
-        backdropFilter: 'blur(10px)'
+        overflowX: 'hidden',
+        backdropFilter: 'blur(10px)',
+        flexShrink: 0
       }}>
         {/* Meeting Attendees */}
         <div style={{ 
@@ -2430,184 +2468,59 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           
           {/* Current User */}
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
+            padding: '12px 16px',
             background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(16, 185, 129, 0.1) 100%)',
-            borderRadius: '12px',
-            marginBottom: '12px',
+            borderRadius: '8px',
+            marginBottom: '8px',
             border: '1px solid rgba(34, 197, 94, 0.2)',
             backdropFilter: 'blur(10px)',
             transition: 'all 0.2s ease'
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '16px',
-              fontWeight: '700',
-              color: 'white',
-              boxShadow: '0 4px 12px rgba(34, 197, 94, 0.3)'
+            <div style={{ 
+              color: 'white', 
+              fontSize: '14px', 
+              fontWeight: '600'
             }}>
-              Y
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ 
-                color: 'white', 
-                fontSize: '15px', 
-                fontWeight: '600',
-                marginBottom: '4px'
-              }}>
-                You (Host)
-              </div>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                fontSize: '12px',
-                color: '#94a3b8'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <div style={{
-                    width: '6px',
-                    height: '6px',
-                    backgroundColor: isVideoEnabled ? '#22c55e' : '#ef4444',
-                    borderRadius: '50%'
-                  }}></div>
-                  Video
-                </div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <div style={{
-                    width: '6px',
-                    height: '6px',
-                    backgroundColor: isAudioEnabled ? '#22c55e' : '#ef4444',
-                    borderRadius: '50%'
-                  }}></div>
-                  Audio
-                </div>
-              </div>
+              You (Host)
             </div>
           </div>
           
           {/* Hero AI - Always shown as default participant */}
           <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            padding: '16px',
+            padding: '12px 16px',
             background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(124, 58, 237, 0.1) 100%)',
-            borderRadius: '12px',
-            marginBottom: '12px',
+            borderRadius: '8px',
+            marginBottom: '8px',
             border: '1px solid rgba(139, 92, 246, 0.2)',
             backdropFilter: 'blur(10px)',
             transition: 'all 0.2s ease'
           }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '16px',
-              fontWeight: '700',
-              color: 'white',
-              boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)'
+            <div style={{ 
+              color: 'white', 
+              fontSize: '14px', 
+              fontWeight: '600'
             }}>
-              🤖
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ 
-                color: 'white', 
-                fontSize: '15px', 
-                fontWeight: '600',
-                marginBottom: '4px'
-              }}>
-                Hero AI
-              </div>
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                fontSize: '12px',
-                color: '#94a3b8'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px'
-                }}>
-                  <div style={{
-                    width: '6px',
-                    height: '6px',
-                    backgroundColor: '#22c55e',
-                    borderRadius: '50%'
-                  }}></div>
-                  Active
-                </div>
-              </div>
+              Hero AI
             </div>
           </div>
           
           {/* Other Remote Participants */}
           {participants.filter(p => p.identity !== 'hero-bot').map((participant, index) => (
             <div key={participant.identity} style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              padding: '16px',
+              padding: '12px 16px',
               background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.1) 100%)',
-              borderRadius: '12px',
-              marginBottom: '12px',
+              borderRadius: '8px',
+              marginBottom: '8px',
               border: '1px solid rgba(245, 158, 11, 0.2)',
               backdropFilter: 'blur(10px)',
               transition: 'all 0.2s ease'
             }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '16px',
-                fontWeight: '700',
-                color: 'white',
-                boxShadow: '0 4px 12px rgba(245, 158, 11, 0.3)'
+              <div style={{ 
+                color: 'white', 
+                fontSize: '14px', 
+                fontWeight: '600'
               }}>
-                {participant.identity.charAt(0).toUpperCase()}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ 
-                  color: 'white', 
-                  fontSize: '15px', 
-                  fontWeight: '600',
-                  marginBottom: '4px'
-                }}>
-                  {participant.name || `Participant ${index + 1}`}
-                </div>
-                <div style={{ 
-                  color: '#94a3b8', 
-                  fontSize: '12px',
-                  fontWeight: '500'
-                }}>
-                  Online
-                </div>
+                {participant.name || `Participant ${index + 1}`}
               </div>
             </div>
           ))}
@@ -2631,15 +2544,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             padding: '12px',
             border: '1px solid rgba(59, 130, 246, 0.2)'
           }}>
-            <label style={{ 
-              display: 'block', 
-              color: '#d1d5db', 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              marginBottom: '8px' 
-            }}>
-              Provider:
-            </label>
             <select
               value={sttProvider}
               onChange={(e) => {
@@ -2650,7 +2554,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               }}
               style={{
                 width: '100%',
-                padding: '8px 12px',
+                padding: '10px 12px',
                 backgroundColor: '#1f2937',
                 border: '1px solid #4b5563',
                 borderRadius: '6px',
@@ -2672,25 +2576,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               <option value="webspeech">Web Speech API</option>
               <option value="deepgram">Deepgram</option>
             </select>
-            
-            <div style={{ 
-              marginTop: '8px', 
-              fontSize: '12px', 
-              color: '#9ca3af',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <div style={{
-                width: '8px',
-                height: '8px',
-                backgroundColor: sttProvider === 'deepgram' ? '#10b981' : '#3b82f6',
-                borderRadius: '50%'
-              }}></div>
-              <span>
-                {sttProvider === 'deepgram' ? 'Premium accuracy' : 'Browser native'}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2712,15 +2597,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             padding: '12px',
             border: '1px solid rgba(245, 158, 11, 0.2)'
           }}>
-            <label style={{ 
-              display: 'block', 
-              color: '#d1d5db', 
-              fontSize: '14px', 
-              fontWeight: '500', 
-              marginBottom: '8px' 
-            }}>
-              Provider:
-            </label>
             <select
               value={ttsProvider}
               onChange={(e) => {
@@ -2731,7 +2607,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               }}
               style={{
                 width: '100%',
-                padding: '8px 12px',
+                padding: '10px 12px',
                 backgroundColor: '#1f2937',
                 border: '1px solid #4b5563',
                 borderRadius: '6px',
@@ -2753,25 +2629,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               <option value="elevenlabs">ElevenLabs</option>
               <option value="gtts">Google TTS</option>
             </select>
-            
-            <div style={{ 
-              marginTop: '8px', 
-              fontSize: '12px', 
-              color: '#9ca3af',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}>
-              <div style={{
-                width: '8px',
-                height: '8px',
-                backgroundColor: ttsProvider === 'elevenlabs' ? '#10b981' : '#3b82f6',
-                borderRadius: '50%'
-              }}></div>
-              <span>
-                {ttsProvider === 'elevenlabs' ? 'Premium quality' : 'Free service'}
-              </span>
-            </div>
           </div>
         </div>
 
@@ -2787,7 +2644,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Live Transcription</h3>
           </div>
           
-          <div style={{
+          <div ref={transcriptContainerRef} style={{
             backgroundColor: '#374151',
             borderRadius: '8px',
             padding: '12px',
@@ -2828,7 +2685,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <span style={{ fontWeight: '600', color: '#60a5fa' }}>
-                      Speaker {msg.speaker || 'Unknown'}
+                      {msg.speaker || 'Unknown'}
                     </span>
                     <span style={{ fontSize: '11px', color: '#9ca3af' }}>
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

@@ -21,6 +21,8 @@ export class WebSpeechSTTService implements STTService {
   private speechTimeout: NodeJS.Timeout | null = null;
   private lastSpeechTime = Date.now();
   private isStopping = false; // Flag to prevent restart loops
+  private lastTranscriptText = '';
+  private lastTranscriptTime = 0;
 
   constructor() {
     // Check if browser supports speech recognition
@@ -62,6 +64,10 @@ export class WebSpeechSTTService implements STTService {
     this.recognition.onstart = () => {
       console.log('🎤 [WEBSPEECH] Recognition started - listening for voice input');
       this.isListening = true;
+      
+      // Reset deduplication state on new session
+      this.lastTranscriptText = '';
+      this.lastTranscriptTime = 0;
       
       // Start more aggressive keepalive interval
       this.keepAliveInterval = setInterval(() => {
@@ -105,15 +111,31 @@ export class WebSpeechSTTService implements STTService {
 
       // Show final transcript
       if (finalTranscript.trim()) {
-        console.log('🎤 [WEBSPEECH] Raw transcript received:', finalTranscript.trim());
-        this.lastSpeechTime = Date.now();
+        const now = Date.now();
+        const text = finalTranscript.trim();
+        
+        // Deduplicate: Skip if same text was sent within last 2 seconds
+        const isDuplicate = (
+          text === this.lastTranscriptText && 
+          (now - this.lastTranscriptTime) < 2000
+        );
+        
+        if (isDuplicate) {
+          console.log('🔄 [WEBSPEECH] Duplicate transcript detected, skipping:', text);
+          return;
+        }
+        
+        console.log('🎤 [WEBSPEECH] Raw transcript received:', text);
+        this.lastSpeechTime = now;
+        this.lastTranscriptText = text;
+        this.lastTranscriptTime = now;
         
         if (this.transcriptCallback) {
           this.transcriptCallback({
-            text: finalTranscript.trim(),
+            text: text,
             speaker: 'user',
             confidence: 0.8, // Web Speech API doesn't provide confidence
-            timestamp: Date.now()
+            timestamp: now
           });
         }
       }
@@ -142,10 +164,12 @@ export class WebSpeechSTTService implements STTService {
         console.warn('🌐 [WEBSPEECH] Network error in speech recognition - connection issues');
       } else if (event.error === 'no-speech') {
         console.log('🔇 [WEBSPEECH] No speech detected - timeout reached, restarting for better sensitivity');
-        // Immediately restart for better sensitivity to short utterances
+        // Guard: avoid InvalidStateError by ensuring recognition is actually stopped before starting
         setTimeout(() => {
-          if (!this.isStopping && this.isListening) {
+          if (!this.isStopping) {
             try {
+              // Explicitly stop first (safe to call if already stopped), then start.
+              try { this.recognition.stop(); } catch {}
               console.log('🔄 [WEBSPEECH] Restarting after no-speech timeout...');
               this.recognition.start();
               this.lastSpeechTime = Date.now();
@@ -153,7 +177,7 @@ export class WebSpeechSTTService implements STTService {
               console.warn('⚠️ [WEBSPEECH] Restart after no-speech failed:', restartError);
             }
           }
-        }, 100); // Very short delay for immediate restart
+        }, 150);
       } else if (event.error === 'audio-capture') {
         console.warn('🎤 [WEBSPEECH] Audio capture error - microphone may be in use');
       } else if (event.error === 'service-not-allowed') {
@@ -214,6 +238,8 @@ export class WebSpeechSTTService implements STTService {
     try {
       console.log('🎤 [WEBSPEECH] Starting Web Speech API transcription...');
       this.isStopping = false; // Reset stopping flag when starting
+      // Ensure clean start to reduce initial clipping of first words
+      try { this.recognition.stop(); } catch {}
       this.recognition.start();
     } catch (error) {
       console.error('❌ [WEBSPEECH] Error starting transcription:', error);
@@ -244,6 +270,10 @@ export class WebSpeechSTTService implements STTService {
     } catch (error) {
       console.warn('⚠️ [WEBSPEECH] Error stopping recognition:', error);
     }
+    
+    // Clear deduplication state
+    this.lastTranscriptText = '';
+    this.lastTranscriptTime = 0;
     
     // Clear any pending callbacks
     this.transcriptCallback = undefined;

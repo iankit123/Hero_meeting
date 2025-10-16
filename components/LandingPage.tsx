@@ -28,244 +28,228 @@ export default function LandingPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #1A2B3C 0%, #2A1A3C 100%)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '20px',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Background Effects */}
-      <div style={{
-        position: 'absolute',
-        top: '20%',
-        left: '10%',
-        width: '300px',
-        height: '300px',
-        background: 'radial-gradient(circle, rgba(0, 192, 255, 0.1) 0%, transparent 70%)',
-        borderRadius: '50%',
-        filter: 'blur(40px)'
-      }}></div>
-      <div style={{
-        position: 'absolute',
-        bottom: '20%',
-        right: '10%',
-        width: '400px',
-        height: '400px',
-        background: 'radial-gradient(circle, rgba(138, 43, 226, 0.1) 0%, transparent 70%)',
-        borderRadius: '50%',
-        filter: 'blur(50px)'
-      }}></div>
-
-      <div style={{ 
-        textAlign: 'center', 
-        maxWidth: '600px', 
-        width: '100%',
-        position: 'relative',
-        zIndex: 2
+    <div style={{ minHeight: '100vh', backgroundColor: '#000000', color: 'white' }}>
+      {/* Navigation */}
+      <nav style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 50,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.1)'
       }}>
-        {/* Badge */}
         <div style={{
-          display: 'inline-flex',
+          maxWidth: '1024px',
+          margin: '0 auto',
+          padding: '13px 19px',
+          display: 'flex',
           alignItems: 'center',
-          gap: '8px',
-          background: 'rgba(0, 192, 255, 0.1)',
-          border: '1px solid rgba(0, 192, 255, 0.3)',
-          borderRadius: '20px',
-          padding: '8px 16px',
-          marginBottom: '32px',
-          fontSize: '14px',
-          fontWeight: '500',
-          color: 'white'
+          justifyContent: 'space-between'
         }}>
-          <div style={{
-            width: '6px',
-            height: '6px',
-            background: '#00C0FF',
-            borderRadius: '50%'
-          }}></div>
-          Powered by Advanced AI Technology
-        </div>
-
-        {/* Main Heading */}
-        <h1 style={{ 
-          fontSize: '64px', 
-          fontWeight: '800', 
-          marginBottom: '16px',
-          lineHeight: '1.1',
-          letterSpacing: '-0.02em'
-        }}>
-          <span style={{ 
-            background: 'linear-gradient(135deg, #00C0FF 0%, #8A2BE2 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text'
-          }}>
-            Hero AI
-          </span>
-        </h1>
-        
-        <h2 style={{
-          fontSize: '48px',
-          fontWeight: '700',
-          color: 'white',
-          marginBottom: '24px',
-          lineHeight: '1.2'
-        }}>
-          Your Intelligent<br />
-          Meeting Participant
-        </h2>
-
-        {/* Description */}
-        <p style={{ 
-          fontSize: '18px', 
-          marginBottom: '48px', 
-          color: '#CCCCCC',
-          lineHeight: '1.6',
-          maxWidth: '500px',
-          margin: '0 auto 48px auto'
-        }}>
-          Not just a note-taker. Hero AI actively listens, understands context, and contributes intelligently to your meetings—so you can focus on what matters most.
-        </p>
-        
-        {/* Action Buttons */}
-        <div style={{
-          display: 'flex',
-          gap: '16px',
-          justifyContent: 'center',
-          marginBottom: '48px',
-          flexWrap: 'wrap'
-        }}>
-          <button
-            onClick={handleCreateMeeting}
-            disabled={isCreating}
-            style={{
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{
+              width: '26px',
+              height: '26px',
+              background: 'linear-gradient(135deg, #ec4899 0%, #a855f7 100%)',
+              borderRadius: '6px',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              background: 'linear-gradient(135deg, #00C0FF 0%, #8A2BE2 100%)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '12px',
-              padding: '16px 32px',
-              fontSize: '16px',
-              fontWeight: '600',
-              cursor: isCreating ? 'not-allowed' : 'pointer',
-              opacity: isCreating ? 0.7 : 1,
-              transition: 'all 0.3s ease',
-              boxShadow: '0 8px 32px rgba(0, 192, 255, 0.3)'
-            }}
-            onMouseOver={(e) => {
-              if (!isCreating) {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 12px 40px rgba(0, 192, 255, 0.4)';
-              }
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = '0 8px 32px rgba(0, 192, 255, 0.3)';
-            }}
-          >
-            {isCreating ? 'Creating Meeting...' : 'Start Free Meeting'}
-            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M13 7l5 5-5 5M6 12h12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
-
-          <button
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              background: 'rgba(0, 0, 0, 0.2)',
-              color: 'white',
-              border: '1px solid #00C0FF',
-              borderRadius: '12px',
-              padding: '16px 32px',
-              fontSize: '16px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.3s ease',
-              backdropFilter: 'blur(10px)'
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.background = 'rgba(0, 192, 255, 0.1)';
-              e.currentTarget.style.transform = 'translateY(-2px)';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.background = 'rgba(0, 0, 0, 0.2)';
-              e.currentTarget.style.transform = 'translateY(0)';
-            }}
-          >
-            <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" fill="currentColor"/>
-            </svg>
-            Watch Demo
+              justifyContent: 'center'
+            }}>
+              <svg width="16" height="16" fill="white" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+              </svg>
+            </div>
+            <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Hero AI</span>
+          </div>
+          <div style={{ display: 'none', gap: '26px', '@media (min-width: 768px)': { display: 'flex' } }}>
+            <a href="#how-it-works" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>How it Works</a>
+            <a href="#features" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>Features</a>
+            <a href="#pricing" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>Pricing</a>
+          </div>
+          <button style={{
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            background: 'transparent',
+            color: 'white',
+            padding: '6px 13px',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: '500',
+            transition: 'background 0.3s'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}>
+            Start Building
           </button>
         </div>
+      </nav>
 
-        {/* Trust Indicators */}
+      {/* Hero Section */}
+      <section style={{
+        position: 'relative',
+        paddingTop: '102px',
+        paddingBottom: '64px',
+        paddingLeft: '19px',
+        paddingRight: '19px',
+        overflow: 'hidden'
+      }}>
+        {/* Abstract Background Elements */}
         <div style={{
+          position: 'absolute',
+          top: '64px',
+          right: 0,
+          width: '480px',
+          height: '480px',
+          background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.2) 50%, transparent 100%)',
+          borderRadius: '50%',
+          filter: 'blur(64px)'
+        }}></div>
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: '400px',
+          height: '400px',
+          background: 'radial-gradient(circle, rgba(217, 70, 239, 0.1) 0%, rgba(168, 85, 247, 0.1) 50%, transparent 100%)',
+          borderRadius: '50%',
+          filter: 'blur(64px)'
+        }}></div>
+
+        <div style={{
+          maxWidth: '1024px',
+          margin: '0 auto',
+          position: 'relative',
+          zIndex: 10,
           display: 'flex',
-          justifyContent: 'center',
-          gap: '32px',
-          flexWrap: 'wrap',
-          fontSize: '14px',
-          color: '#CCCCCC'
+          alignItems: 'center',
+          gap: '38px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ maxWidth: '717px', flex: '0 0 auto' }}>
+            {/* Badge */}
             <div style={{
-              width: '16px',
-              height: '16px',
-              background: '#00C0FF',
-              borderRadius: '50%',
-              display: 'flex',
+              display: 'inline-flex',
               alignItems: 'center',
-              justifyContent: 'center'
+              gap: '6px',
+              background: 'rgba(109, 40, 217, 0.4)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              borderRadius: '9999px',
+              padding: '6px 13px',
+              marginBottom: '19px'
             }}>
-              <svg width="8" height="8" fill="white" viewBox="0 0 24 24">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
+              <svg width="13" height="13" fill="#c084fc" viewBox="0 0 24 24">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
               </svg>
+              <p style={{ color: '#d8b4fe', fontSize: '11px', fontWeight: '500', margin: 0 }}>
+                Your Intelligent Meeting Participant
+              </p>
             </div>
-            No credit card required
+
+            {/* Main Heading */}
+            <h1 style={{
+              fontSize: '77px',
+              fontWeight: 'bold',
+              lineHeight: '1.1',
+              marginBottom: '26px',
+              margin: 0
+            }}>
+              <span style={{
+                background: 'linear-gradient(to right, #f9a8d4, #c084fc, #a855f7)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}>
+                Hero AI
+              </span>
+              <br />
+              <span style={{ color: 'white' }}>Your Intelligent</span>
+              <br />
+              <span style={{ color: 'white' }}>Meeting</span>
+              <br />
+              <span style={{ color: 'white' }}>Participant</span>
+            </h1>
+
+            {/* Description */}
+            <p style={{
+              fontSize: '16px',
+              color: '#d1d5db',
+              marginBottom: '38px',
+              maxWidth: '538px',
+              lineHeight: '1.75'
+            }}>
+              Not just a note-taker. Hero AI actively listens, understands context, and contributes intelligently to your meetings—so you can focus on what matters most.
+            </p>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '13px' }}>
+              <button
+                onClick={handleCreateMeeting}
+                disabled={isCreating}
+                style={{
+                  background: 'linear-gradient(to right, #ec4899, #a855f7)',
+                  color: 'white',
+                  border: 'none',
+                  padding: '19px 26px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  borderRadius: '6px',
+                  cursor: isCreating ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.3s',
+                  opacity: isCreating ? 0.7 : 1
+                }}
+                onMouseOver={(e) => {
+                  if (!isCreating) {
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                {isCreating ? 'Creating Meeting...' : 'Start Free Meeting'}
+              </button>
+              <button style={{
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                background: 'rgba(0, 0, 0, 0.5)',
+                color: 'white',
+                padding: '19px 26px',
+                fontSize: '14px',
+                fontWeight: '600',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)'}
+              onMouseOut={(e) => e.currentTarget.style.background = 'rgba(0, 0, 0, 0.5)'}>
+                <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+                Watch Demo
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '16px',
-              height: '16px',
-              background: '#00C0FF',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <svg width="8" height="8" fill="white" viewBox="0 0 24 24">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
-              </svg>
-            </div>
-            5-minute setup
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
-              width: '16px',
-              height: '16px',
-              background: '#00C0FF',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }}>
-              <svg width="8" height="8" fill="white" viewBox="0 0 24 24">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" fill="currentColor"/>
-              </svg>
-            </div>
-            Free forever
+
+          {/* Illustration SVG */}
+          <div style={{ flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: '400px' }}>
+            <img 
+              src="/meeting-illustration.svg" 
+              alt="Meeting Illustration with video participants" 
+              style={{ 
+                width: '100%', 
+                height: 'auto', 
+                maxWidth: '400px', 
+                opacity: 0.9,
+                filter: 'drop-shadow(0 20px 40px rgba(0, 0, 0, 0.3))'
+              }} 
+            />
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

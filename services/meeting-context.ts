@@ -214,16 +214,23 @@ class MeetingContextService {
    */
   private async getRecentContext(orgName: string, limit: number = 2): Promise<string> {
     try {
+      console.log(`🔍 [RAG-FALLBACK] Getting recent meetings for org: "${orgName}" (limit: 5)`);
       const meetings = await supabaseContextService.getMeetingsByOrg(orgName, 5);
       
-      if (meetings.length === 0) return '';
+      console.log(`📊 [RAG-FALLBACK] Found ${meetings.length} meetings for org "${orgName}"`);
+      if (meetings.length === 0) {
+        console.warn(`⚠️ [RAG-FALLBACK] No meetings found for org "${orgName}" - returning empty context`);
+        return '';
+      }
 
       const contextPieces: string[] = [];
       
       for (const meeting of meetings.slice(0, limit)) {
         try {
+          console.log(`📖 [RAG-FALLBACK] Fetching transcripts for meeting ${meeting.id} (${meeting.room_name})`);
           const transcripts = await supabaseContextService.getTranscriptsByMeeting(meeting.id);
           
+          console.log(`📊 [RAG-FALLBACK] Found ${transcripts.length} transcripts for meeting ${meeting.id}`);
           if (transcripts.length > 0) {
             const meetingDate = new Date(meeting.started_at).toLocaleDateString();
             let meetingContext = `\n**Previous Meeting (${meetingDate})**\n`;
@@ -235,19 +242,23 @@ class MeetingContextService {
             });
             
             contextPieces.push(meetingContext);
+            console.log(`✅ [RAG-FALLBACK] Added context from meeting ${meeting.id}`);
           }
         } catch (err) {
-          console.warn('⚠️ [RAG] Error fetching transcripts:', err);
+          console.warn('⚠️ [RAG-FALLBACK] Error fetching transcripts:', err);
         }
       }
       
       if (contextPieces.length > 0) {
-        return `\n**Context from Recent Meetings:**\n${contextPieces.join('\n')}`;
+        const finalContext = `\n**Context from Recent Meetings:**\n${contextPieces.join('\n')}`;
+        console.log(`✅ [RAG-FALLBACK] Returning ${contextPieces.length} meeting contexts (${finalContext.length} chars total)`);
+        return finalContext;
       }
       
+      console.warn(`⚠️ [RAG-FALLBACK] No context pieces generated - returning empty`);
       return '';
     } catch (error) {
-      console.error('❌ [RAG] Error getting recent context:', error);
+      console.error('❌ [RAG-FALLBACK] Error getting recent context:', error);
       return '';
     }
   }
