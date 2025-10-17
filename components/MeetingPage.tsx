@@ -487,6 +487,40 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             timestamp: data.timestamp,
             isTranscript: true
           }, false);  // Don't re-broadcast!
+        } else if (data.type === 'stt_provider_change') {
+          console.log('\n🔄 [PROVIDER-SYNC] === STT PROVIDER CHANGE RECEIVED ===');
+          console.log('📨 [PROVIDER-SYNC] From participant:', participant?.identity || 'unknown');
+          console.log('📨 [PROVIDER-SYNC] Participant name:', data.changedBy);
+          console.log('📨 [PROVIDER-SYNC] New provider:', data.provider);
+          console.log('📨 [PROVIDER-SYNC] Current local provider:', sttProvider);
+          console.log('📨 [PROVIDER-SYNC] Room state:', roomRef.current?.state || 'null');
+          
+          // Update local provider to match
+          if (data.provider !== sttProvider) {
+            console.log(`📡 [PROVIDER-SYNC] ⚠️ MISMATCH DETECTED - Syncing STT provider: ${sttProvider} → ${data.provider}`);
+            await handleSttProviderSwitch(data.provider, false); // false = don't re-broadcast
+            console.log('✅ [PROVIDER-SYNC] STT sync complete\n');
+          } else {
+            console.log('✅ [PROVIDER-SYNC] STT provider already matches:', data.provider);
+            console.log('✅ [PROVIDER-SYNC] No action needed\n');
+          }
+        } else if (data.type === 'tts_provider_change') {
+          console.log('\n🔄 [PROVIDER-SYNC] === TTS PROVIDER CHANGE RECEIVED ===');
+          console.log('📨 [PROVIDER-SYNC] From participant:', participant?.identity || 'unknown');
+          console.log('📨 [PROVIDER-SYNC] Participant name:', data.changedBy);
+          console.log('📨 [PROVIDER-SYNC] New provider:', data.provider);
+          console.log('📨 [PROVIDER-SYNC] Current local provider:', ttsProvider);
+          console.log('📨 [PROVIDER-SYNC] Room state:', roomRef.current?.state || 'null');
+          
+          // Update local provider to match
+          if (data.provider !== ttsProvider) {
+            console.log(`📡 [PROVIDER-SYNC] ⚠️ MISMATCH DETECTED - Syncing TTS provider: ${ttsProvider} → ${data.provider}`);
+            await handleTtsProviderSwitch(data.provider, false); // false = don't re-broadcast
+            console.log('✅ [PROVIDER-SYNC] TTS sync complete\n');
+          } else {
+            console.log('✅ [PROVIDER-SYNC] TTS provider already matches:', data.provider);
+            console.log('✅ [PROVIDER-SYNC] No action needed\n');
+          }
         }
       } catch (error) {
         console.warn('⚠️ [DATA] Failed to parse received data:', error);
@@ -1226,6 +1260,58 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       console.error('❌ [TRANSCRIPT-BROADCAST] Failed to broadcast transcript:', error);
     }
   };
+
+  // Broadcast STT provider change to all participants
+  const broadcastSttProviderChange = async (provider: 'webspeech' | 'deepgram') => {
+    const currentRoom = roomRef.current;
+    const currentParticipantName = participantNameRef.current;
+    
+    if (!currentRoom || currentRoom.state !== 'connected') {
+      console.warn('⚠️ [PROVIDER-BROADCAST] No room available for broadcasting STT provider change');
+      return;
+    }
+
+    try {
+      const providerData = {
+        type: 'stt_provider_change',
+        provider: provider,
+        changedBy: currentParticipantName || 'Unknown',
+        timestamp: Date.now()
+      };
+
+      const payload = new TextEncoder().encode(JSON.stringify(providerData));
+      await currentRoom.localParticipant.publishData(payload, { reliable: true });
+      console.log('📡 [PROVIDER-BROADCAST] STT provider change broadcasted to all participants:', provider);
+    } catch (error) {
+      console.error('❌ [PROVIDER-BROADCAST] Failed to broadcast STT provider change:', error);
+    }
+  };
+
+  // Broadcast TTS provider change to all participants
+  const broadcastTtsProviderChange = async (provider: 'elevenlabs' | 'gtts') => {
+    const currentRoom = roomRef.current;
+    const currentParticipantName = participantNameRef.current;
+    
+    if (!currentRoom || currentRoom.state !== 'connected') {
+      console.warn('⚠️ [PROVIDER-BROADCAST] No room available for broadcasting TTS provider change');
+      return;
+    }
+
+    try {
+      const providerData = {
+        type: 'tts_provider_change',
+        provider: provider,
+        changedBy: currentParticipantName || 'Unknown',
+        timestamp: Date.now()
+      };
+
+      const payload = new TextEncoder().encode(JSON.stringify(providerData));
+      await currentRoom.localParticipant.publishData(payload, { reliable: true });
+      console.log('📡 [PROVIDER-BROADCAST] TTS provider change broadcasted to all participants:', provider);
+    } catch (error) {
+      console.error('❌ [PROVIDER-BROADCAST] Failed to broadcast TTS provider change:', error);
+    }
+  };
   
   
   const startTranscription = async (room: Room) => {
@@ -1836,9 +1922,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
 
-  const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram') => {
+  const handleSttProviderSwitch = async (newProvider: 'webspeech' | 'deepgram', shouldBroadcast: boolean = true) => {
     try {
+      const currentParticipantName = participantNameRef.current;
       console.log('🔄 [STT] === SWITCHING STT PROVIDER ===');
+      console.log('🔄 [STT] Initiated by:', shouldBroadcast ? currentParticipantName + ' (local)' : 'remote participant');
+      console.log('🔄 [STT] Target provider:', newProvider);
+      console.log('🔄 [STT] Should broadcast:', shouldBroadcast);
       
       // Stop current STT service more aggressively
       if (sttServiceRef.current) {
@@ -1868,30 +1958,42 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
 
-      // Switch provider (use parameter or toggle)
-      const targetProvider = newProvider || (sttProvider === 'webspeech' ? 'deepgram' : 'webspeech');
-      console.log(`🔄 [STT] Switching from ${sttProvider} to ${targetProvider}`);
+      console.log(`🔄 [STT] Switching from ${sttProvider} to ${newProvider}`);
       
-      setSttProvider(targetProvider);
+      setSttProvider(newProvider);
       
       // Wait for state update
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Create new STT service
-      sttServiceRef.current = createSTTService(targetProvider);
-      console.log(`✅ [STT] Created new ${targetProvider} service`);
+      sttServiceRef.current = createSTTService(newProvider);
+      console.log(`✅ [STT] Created new ${newProvider} service`);
 
-      // Restart transcription if room is connected
-      if (room && room.state === 'connected') {
-        console.log(`🎤 [STT] Restarting transcription with ${targetProvider}...`);
-        await startTranscription(room);
-        console.log(`✅ [STT] Transcription restarted with ${targetProvider}`);
+      // Restart transcription if room is connected (use roomRef to avoid stale closure)
+      const currentRoom = roomRef.current;
+      console.log(`🔍 [STT] Checking room state for restart... Room exists: ${!!currentRoom}, State: ${currentRoom?.state || 'null'}`);
+      
+      if (currentRoom && currentRoom.state === 'connected') {
+        console.log(`🎤 [STT] Restarting transcription with ${newProvider}...`);
+        await startTranscription(currentRoom);
+        console.log(`✅ [STT] Transcription restarted with ${newProvider}`);
+      } else {
+        console.error(`❌ [STT] Cannot restart - room not connected. Room: ${currentRoom ? 'exists' : 'null'}, State: ${currentRoom?.state || 'N/A'}`);
+      }
+
+      // Broadcast to other participants (only if this is a local change)
+      if (shouldBroadcast) {
+        console.log('📡 [STT] Broadcasting provider change to all participants...');
+        await broadcastSttProviderChange(newProvider);
+      } else {
+        console.log('📥 [STT] Provider change received from remote - not re-broadcasting');
       }
 
       // Add notification to transcript
+      const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎤 Switched to ${targetProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
+        text: `🎤 ${changeSource} switched to ${newProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -1910,20 +2012,36 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
 
-  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts') => {
+  // Wrapper for UI-triggered STT provider toggle
+  const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram') => {
+    const targetProvider = newProvider || (sttProvider === 'webspeech' ? 'deepgram' : 'webspeech');
+    await handleSttProviderSwitch(targetProvider, true); // true = broadcast to others
+  };
+
+  const handleTtsProviderSwitch = async (newProvider: 'elevenlabs' | 'gtts', shouldBroadcast: boolean = true) => {
     try {
+      const currentParticipantName = participantNameRef.current;
       console.log('🔄 [TTS] === SWITCHING TTS PROVIDER ===');
+      console.log('🔄 [TTS] Initiated by:', shouldBroadcast ? currentParticipantName + ' (local)' : 'remote participant');
+      console.log('🔄 [TTS] Target provider:', newProvider);
+      console.log('🔄 [TTS] Should broadcast:', shouldBroadcast);
+      console.log(`🔄 [TTS] Switching from ${ttsProvider} to ${newProvider}`);
       
-      // Switch provider (use parameter or toggle)
-      const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : 'elevenlabs');
-      console.log(`🔄 [TTS] Switching from ${ttsProvider} to ${targetProvider}`);
+      setTtsProvider(newProvider);
       
-      setTtsProvider(targetProvider);
+      // Broadcast to other participants (only if this is a local change)
+      if (shouldBroadcast) {
+        console.log('📡 [TTS] Broadcasting provider change to all participants...');
+        await broadcastTtsProviderChange(newProvider);
+      } else {
+        console.log('📥 [TTS] Provider change received from remote - not re-broadcasting');
+      }
       
       // Add notification to transcript
+      const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎵 Switched to ${targetProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
+        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -1940,6 +2058,12 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         isTranscript: true
       });
     }
+  };
+
+  // Wrapper for UI-triggered TTS provider toggle
+  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts') => {
+    const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : 'elevenlabs');
+    await handleTtsProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
   const leaveMeeting = async () => {
