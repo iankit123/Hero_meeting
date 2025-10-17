@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function LandingPage() {
   const [isCreating, setIsCreating] = useState(false);
@@ -64,7 +65,10 @@ export default function LandingPage() {
             </div>
             <span style={{ fontSize: '16px', fontWeight: 'bold' }}>Hero AI</span>
           </div>
-          <div style={{ display: 'none', gap: '26px', '@media (min-width: 768px)': { display: 'flex' } }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: '26px'
+          }}>
             <a href="#how-it-works" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>How it Works</a>
             <a href="#features" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>Features</a>
             <a href="#pricing" style={{ color: '#d1d5db', textDecoration: 'none', transition: 'color 0.3s', fontSize: '14px' }}>Pricing</a>
@@ -236,9 +240,11 @@ export default function LandingPage() {
 
           {/* Illustration SVG */}
           <div style={{ flex: '1', display: 'flex', justifyContent: 'center', alignItems: 'center', maxWidth: '400px' }}>
-            <img 
+            <Image 
               src="/meeting-illustration.svg" 
               alt="Meeting Illustration with video participants" 
+              width={400}
+              height={300}
               style={{ 
                 width: '100%', 
                 height: 'auto', 
