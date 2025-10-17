@@ -47,8 +47,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     } else if (message) {
       // Pipeline start (condensed logging)
-      console.log('\n🎯 [API] HERO pipeline start');
-      console.log('📥 [API] Message:', message);
+      console.log('\n🎯 [API] === HERO PIPELINE START ===');
+      console.log('📥 [API] Received message:', message);
+      console.log('📥 [API] TTS Provider from request:', ttsProvider);
+      console.log('📥 [API] TTS Provider from env:', process.env.TTS_PROVIDER);
       
       // Note: User message is already stored by frontend via /api/store-speech
       // So we don't need to store it again here to avoid duplicates
@@ -61,7 +63,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
       const ttsService = createTTSService(selectedTtsProvider);
       
-      console.log(`🎵 [TTS] Provider: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] Selected TTS Provider: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] TTS Service created for: ${selectedTtsProvider}`);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;

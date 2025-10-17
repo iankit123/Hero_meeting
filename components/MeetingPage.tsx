@@ -43,6 +43,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const roomRef = useRef<Room | null>(null);
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
+  const ttsProviderRef = useRef<'elevenlabs' | 'gtts'>('gtts');
+  const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
   
   // Hero query accumulation - per participant using Map
   // Each participant gets their own accumulator to prevent interference
@@ -79,6 +81,16 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   useEffect(() => {
     orgNameRef.current = orgName;
   }, [orgName]);
+
+  useEffect(() => {
+    ttsProviderRef.current = ttsProvider;
+    console.log('🔄 [TTS-REF] TTS provider ref updated to:', ttsProvider);
+  }, [ttsProvider]);
+
+  useEffect(() => {
+    sttProviderRef.current = sttProvider;
+    console.log('🔄 [STT-REF] STT provider ref updated to:', sttProvider);
+  }, [sttProvider]);
 
   useEffect(() => {
     // Don't initialize until we have participant name
@@ -1495,6 +1507,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     console.log('🚀 [FRONTEND] Message:', transcript);
     
     const currentOrgName = orgNameRef.current;
+    const currentTtsProvider = ttsProviderRef.current; // Use ref to get current TTS provider
+    
+    console.log('🎵 [FRONTEND] TTS Provider being sent to Hero:', currentTtsProvider);
     
     try {
       console.log('🌐 [FRONTEND] Making API call to /api/hero-join...');
@@ -1507,7 +1522,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           message: transcript,
-          ttsProvider: ttsProvider,
+          ttsProvider: currentTtsProvider,
           orgName: currentOrgName
         }),
       });
@@ -1729,6 +1744,11 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     });
 
     // Send message to backend for Hero bot processing
+    const currentTtsProvider = ttsProviderRef.current;
+    const currentOrgName = orgNameRef.current;
+    
+    console.log('🎵 [CHAT-HERO] TTS Provider for Hero:', currentTtsProvider);
+    
     try {
       const response = await fetch('/api/hero-join', {
         method: 'POST',
@@ -1738,8 +1758,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         body: JSON.stringify({
           roomName,
           message,
-          ttsProvider: ttsProvider,
-          orgName: orgName
+          ttsProvider: currentTtsProvider,
+          orgName: currentOrgName
         }),
       });
 
