@@ -443,7 +443,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const setupRoomEventListeners = (newRoom: Room) => {
     console.log('🎧 [EVENTS] Setting up room event listeners...');
     
-    // Set up data channel for Hero message and transcript broadcasting
+    // Set up data channel for Hero message, transcript, and provider sync
     newRoom.on(RoomEvent.DataReceived, async (payload: Uint8Array, participant?: RemoteParticipant) => {
       try {
         const data = JSON.parse(new TextDecoder().decode(payload));
@@ -487,6 +487,18 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             timestamp: data.timestamp,
             isTranscript: true
           }, false);  // Don't re-broadcast!
+        } else if (data.type === 'provider_change') {
+          // Room-wide provider synchronization
+          const { domain, provider } = data;
+          console.log(`🛰️ [PROVIDER] Received provider change -> ${domain}: ${provider}`);
+
+          if (domain === 'stt') {
+            // Switch STT provider locally (no rebroadcast)
+            await toggleSTTProvider(provider);
+          } else if (domain === 'tts') {
+            // Switch TTS provider locally (no rebroadcast)
+            await toggleTTSProvider(provider);
+          }
         }
       } catch (error) {
         console.warn('⚠️ [DATA] Failed to parse received data:', error);
@@ -1888,6 +1900,20 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         console.log(`✅ [STT] Transcription restarted with ${targetProvider}`);
       }
 
+      // Broadcast provider change to the room so everyone syncs
+      const currentRoom = roomRef.current;
+      if (currentRoom && currentRoom.state === 'connected') {
+        const msg = {
+          type: 'provider_change',
+          domain: 'stt',
+          provider: targetProvider,
+          timestamp: Date.now()
+        };
+        const payload = new TextEncoder().encode(JSON.stringify(msg));
+        await currentRoom.localParticipant.publishData(payload, { reliable: true });
+        console.log('📤 [PROVIDER] Broadcasted STT provider change:', targetProvider);
+      }
+
       // Add notification to transcript
       addSystemTranscript({
         id: generateMessageId(),
@@ -1928,6 +1954,20 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         timestamp: Date.now(),
         isTranscript: true
       });
+
+      // Broadcast provider change to the room so everyone syncs
+      const currentRoom2 = roomRef.current;
+      if (currentRoom2 && currentRoom2.state === 'connected') {
+        const msg = {
+          type: 'provider_change',
+          domain: 'tts',
+          provider: targetProvider,
+          timestamp: Date.now()
+        };
+        const payload = new TextEncoder().encode(JSON.stringify(msg));
+        await currentRoom2.localParticipant.publishData(payload, { reliable: true });
+        console.log('📤 [PROVIDER] Broadcasted TTS provider change:', targetProvider);
+      }
       
       console.log('✅ [TTS] === PROVIDER SWITCH COMPLETE ===');
     } catch (error) {
