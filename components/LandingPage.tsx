@@ -50,13 +50,13 @@ export default function LandingPage() {
           justifyContent: 'space-between'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{
+    <div style={{
               width: '33px',
               height: '33px',
               background: 'linear-gradient(135deg, #ec4899 0%, #a855f7 100%)',
               borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
+      display: 'flex',
+      alignItems: 'center',
               justifyContent: 'center'
             }}>
               <svg width="20" height="20" fill="white" viewBox="0 0 24 24">
@@ -93,54 +93,54 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       <section style={{
-        position: 'relative',
+      position: 'relative',
         paddingTop: '128px',
         paddingBottom: '80px',
         paddingLeft: '24px',
         paddingRight: '24px',
-        overflow: 'hidden'
-      }}>
+      overflow: 'hidden'
+    }}>
         {/* Abstract Background Elements */}
-        <div style={{
-          position: 'absolute',
+      <div style={{
+        position: 'absolute',
           top: '80px',
           right: 0,
           width: '600px',
           height: '600px',
           background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, rgba(236, 72, 153, 0.2) 50%, transparent 100%)',
-          borderRadius: '50%',
+        borderRadius: '50%',
           filter: 'blur(80px)'
-        }}></div>
-        <div style={{
-          position: 'absolute',
+      }}></div>
+      <div style={{
+        position: 'absolute',
           bottom: 0,
           left: 0,
           width: '500px',
           height: '500px',
           background: 'radial-gradient(circle, rgba(217, 70, 239, 0.1) 0%, rgba(168, 85, 247, 0.1) 50%, transparent 100%)',
-          borderRadius: '50%',
+        borderRadius: '50%',
           filter: 'blur(80px)'
-        }}></div>
+      }}></div>
 
-        <div style={{
+      <div style={{ 
           maxWidth: '1280px',
           margin: '0 auto',
-          position: 'relative',
+        position: 'relative',
           zIndex: 10,
           display: 'flex',
           alignItems: 'center',
           gap: '48px'
-        }}>
+      }}>
           <div style={{ maxWidth: '896px', flex: '0 0 auto' }}>
-            {/* Badge */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
+        {/* Badge */}
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
               background: 'rgba(109, 40, 217, 0.4)',
               border: '1px solid rgba(168, 85, 247, 0.3)',
               borderRadius: '9999px',
-              padding: '8px 16px',
+          padding: '8px 16px',
               marginBottom: '24px'
             }}>
               <svg width="16" height="16" fill="#c084fc" viewBox="0 0 24 24">
@@ -149,57 +149,57 @@ export default function LandingPage() {
               <p style={{ color: '#d8b4fe', fontSize: '14px', fontWeight: '500', margin: 0 }}>
                 Your Intelligent Meeting Participant
               </p>
-            </div>
+        </div>
 
-            {/* Main Heading */}
-            <h1 style={{
+        {/* Main Heading */}
+        <h1 style={{ 
               fontSize: '96px',
               fontWeight: 'bold',
-              lineHeight: '1.1',
+          lineHeight: '1.1',
               marginBottom: '33px',
               margin: 0
-            }}>
-              <span style={{
+        }}>
+          <span style={{ 
                 background: 'linear-gradient(to right, #f9a8d4, #c084fc, #a855f7)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
-              }}>
-                Hero AI
-              </span>
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            Hero AI
+          </span>
               <br />
               <span style={{ color: 'white' }}>Your Intelligent</span>
               <br />
               <span style={{ color: 'white' }}>Meeting</span>
               <br />
               <span style={{ color: 'white' }}>Participant</span>
-            </h1>
+        </h1>
 
-            {/* Description */}
-            <p style={{
+        {/* Description */}
+        <p style={{ 
               fontSize: '20px',
               color: '#d1d5db',
-              marginBottom: '48px',
+          marginBottom: '48px', 
               maxWidth: '673px',
               lineHeight: '1.75'
-            }}>
-              Not just a note-taker. Hero AI actively listens, understands context, and contributes intelligently to your meetings—so you can focus on what matters most.
-            </p>
-
-            {/* Action Buttons */}
+        }}>
+          Not just a note-taker. Hero AI actively listens, understands context, and contributes intelligently to your meetings—so you can focus on what matters most.
+        </p>
+        
+        {/* Action Buttons */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-              <button
-                onClick={handleCreateMeeting}
-                disabled={isCreating}
-                style={{
+          <button
+            onClick={handleCreateMeeting}
+            disabled={isCreating}
+            style={{
                   background: 'linear-gradient(to right, #ec4899, #a855f7)',
-                  color: 'white',
-                  border: 'none',
+              color: 'white',
+              border: 'none',
                   padding: '24px 33px',
                   fontSize: '18px',
-                  fontWeight: '600',
+              fontWeight: '600',
                   borderRadius: '8px',
-                  cursor: isCreating ? 'not-allowed' : 'pointer',
+              cursor: isCreating ? 'not-allowed' : 'pointer',
                   transition: 'all 0.3s',
                   opacity: isCreating ? 0.7 : 1
                 }}
@@ -386,7 +386,7 @@ export default function LandingPage() {
               }}>
                 <svg width="24" height="24" fill="white" viewBox="0 0 24 24">
                   <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
+            </svg>
               </div>
               <h3 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '16px', color: 'white' }}>
                 AI-Powered Insights
@@ -419,8 +419,8 @@ export default function LandingPage() {
                 height: '48px',
                 background: 'linear-gradient(135deg, #ec4899, #a855f7)',
                 borderRadius: '12px',
-                display: 'flex',
-                alignItems: 'center',
+              display: 'flex',
+              alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: '24px'
               }}>
@@ -458,7 +458,7 @@ export default function LandingPage() {
                 width: '48px',
                 height: '48px',
                 background: 'linear-gradient(135deg, #ec4899, #a855f7)',
-                borderRadius: '12px',
+              borderRadius: '12px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -795,7 +795,7 @@ export default function LandingPage() {
                 <li style={{ color: '#d1d5db', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <svg width="16" height="16" fill="#10b981" viewBox="0 0 24 24">
                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                  </svg>
+              </svg>
                   Meeting history (30 days)
                 </li>
               </ul>
@@ -906,7 +906,7 @@ export default function LandingPage() {
               onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}>
                 Start Pro Trial
               </button>
-            </div>
+          </div>
 
             {/* Enterprise Plan */}
             <div style={{
@@ -961,7 +961,7 @@ export default function LandingPage() {
                 <li style={{ color: '#d1d5db', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <svg width="16" height="16" fill="#10b981" viewBox="0 0 24 24">
                     <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-                  </svg>
+              </svg>
                   Custom SLA
                 </li>
               </ul>
@@ -993,7 +993,7 @@ export default function LandingPage() {
         position: 'relative',
         textAlign: 'center'
       }}>
-        <div style={{
+            <div style={{
           maxWidth: '800px',
           margin: '0 auto'
         }}>

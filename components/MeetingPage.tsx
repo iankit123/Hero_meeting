@@ -6,6 +6,16 @@ import ChatPanel, { ChatMessage } from './ChatPanel';
 import { createSTTService, STTService, STTResult } from '../services/stt';
 import NameInputModal from './NameInputModal';
 import ParticipantTile from './ParticipantTile';
+import { 
+  HiChevronLeft, 
+  HiChevronRight, 
+  HiUsers, 
+  HiDocumentText, 
+  HiChatAlt2, 
+  HiCog,
+  HiMicrophone,
+  HiVolumeUp
+} from 'react-icons/hi';
 
 interface MeetingPageProps {
   roomName: string;
@@ -31,6 +41,32 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [orgName, setOrgName] = useState<string>('');
   const [audioLevels, setAudioLevels] = useState<Map<string, number>>(new Map());
   const [isHeroSpeaking, setIsHeroSpeaking] = useState(false);
+  
+  // Audio queuing system
+  interface QueuedResponse {
+    id: string;
+    text: string;
+    audioBuffer: string; // base64 encoded
+    timestamp: number;
+    duration: number;
+  }
+  
+  const [audioQueue, setAudioQueue] = useState<QueuedResponse[]>([]);
+  const [isPlayingQueue, setIsPlayingQueue] = useState(false);
+  const currentPlayingRef = useRef<string | null>(null);
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const currentLiveKitTrackRef = useRef<MediaStreamTrack | null>(null);
+  const isHeroSpeakingRef = useRef(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  // Interruption phrases - more flexible patterns
+  const interruptionPhrases = [
+    /\b(ok|okay|got it|stop|enough|that's enough|thank you|thanks)\b/i,
+    /\b(stop talking|be quiet|shut up|cut it out)\b/i,
+    /\b(interrupt|skip|next|move on)\b/i,
+    /\b(ok|stop)\s+(latest|funny|ladies)\b/i, // Handle cases like "ok latest", "stop funny"
+    /\b(that's|that is)\s+(enough|good|fine)\b/i
+  ];
   const videoRef = useRef<HTMLDivElement>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -67,6 +103,309 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       });
     }
     return heroQueryAccumulators.current.get(participantId)!;
+  };
+
+  // Audio queue management functions
+  const addToAudioQueue = (response: QueuedResponse) => {
+    console.log('🎵 [QUEUE] Adding response to audio queue:', response.id);
+    setAudioQueue(prev => {
+      const newQueue = [...prev, response];
+      console.log('🎵 [QUEUE] New queue length:', newQueue.length);
+      
+      // Start playing if not already playing (check ref for current state)
+      if (!isHeroSpeakingRef.current) {
+        console.log('🎵 [QUEUE] Starting playback (not currently playing)');
+        // Use setTimeout to ensure state is updated before calling playNextInQueue
+        setTimeout(() => {
+          playNextInQueue(newQueue);
+        }, 0);
+      } else {
+        console.log('🎵 [QUEUE] Already playing, item added to queue');
+      }
+      
+      return newQueue;
+    });
+  };
+
+  const playNextInQueue = async (currentQueue?: QueuedResponse[]) => {
+    // Use provided queue or current state
+    const queueToUse = currentQueue || audioQueue;
+    
+    if (queueToUse.length === 0) {
+      console.log('🎵 [QUEUE] No more items in queue');
+      setIsPlayingQueue(false);
+      setIsHeroSpeaking(false);
+      isHeroSpeakingRef.current = false;
+      return;
+    }
+
+    const nextResponse = queueToUse[0];
+    console.log('🎵 [QUEUE] Playing next response:', nextResponse.id);
+    
+    setIsPlayingQueue(true);
+    setIsHeroSpeaking(true);
+    isHeroSpeakingRef.current = true;
+    currentPlayingRef.current = nextResponse.id;
+
+    try {
+      // Initialize audio context if not already done
+      if (!audioContextRef.current) {
+        audioContextRef.current = new AudioContext();
+      }
+      
+      // Resume audio context if suspended
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+      
+      const audioData = Uint8Array.from(atob(nextResponse.audioBuffer), c => c.charCodeAt(0));
+      const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
+      
+      // Stop any currently playing audio
+      if (currentAudioSourceRef.current) {
+        currentAudioSourceRef.current.stop();
+        currentAudioSourceRef.current.disconnect();
+      }
+      
+      // Create new audio source
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      
+      // Try to broadcast via LiveKit if room is available
+      const currentRoom = roomRef.current;
+      if (currentRoom && currentRoom.state === 'connected') {
+        try {
+          // Create a MediaStreamDestination to capture audio
+          const destination = audioContextRef.current.createMediaStreamDestination();
+          source.connect(destination);
+          source.connect(audioContextRef.current.destination); // Also play locally
+          
+          // Get audio track from the MediaStream
+          const audioTrack = destination.stream.getAudioTracks()[0];
+          
+          if (audioTrack) {
+            console.log('🎵 [QUEUE] Broadcasting audio via LiveKit:', nextResponse.id);
+            
+            // Store the LiveKit track reference for immediate stopping
+            currentLiveKitTrackRef.current = audioTrack;
+            
+            // Publish audio track to LiveKit so all participants can hear
+            const publication = await currentRoom.localParticipant.publishTrack(audioTrack, {
+              name: 'hero-tts-audio',
+              source: 'microphone' as any, // Use microphone source for compatibility
+            });
+            
+            console.log('✅ [QUEUE] Audio published to LiveKit:', publication.trackSid);
+            
+            // Force enable the track
+            audioTrack.enabled = true;
+            
+            // Start playback
+            source.start();
+            console.log('🔍 [QUEUE] Audio source started, storing reference');
+            currentAudioSourceRef.current = source;
+            
+            // Clean up after playback
+            source.onended = async () => {
+              console.log('🧹 [QUEUE] Cleaning up LiveKit track:', nextResponse.id);
+              try {
+                await currentRoom.localParticipant.unpublishTrack(audioTrack);
+                audioTrack.stop();
+                currentLiveKitTrackRef.current = null;
+                
+                // Remove completed item from queue and play next
+                setAudioQueue(prev => {
+                  const updatedQueue = prev.slice(1);
+                  setTimeout(() => {
+                    playNextInQueue(updatedQueue);
+                  }, 100);
+                  return updatedQueue;
+                });
+              } catch (cleanupError) {
+                console.warn('⚠️ [QUEUE] Error cleaning up track:', cleanupError);
+                
+                // Still continue to next item
+                setAudioQueue(prev => {
+                  const updatedQueue = prev.slice(1);
+                  setTimeout(() => {
+                    playNextInQueue(updatedQueue);
+                  }, 100);
+                  return updatedQueue;
+                });
+              }
+            };
+            
+            return; // Successfully started broadcasting
+          }
+        } catch (broadcastError) {
+          console.warn('⚠️ [QUEUE] LiveKit broadcasting failed, falling back to local playback:', broadcastError);
+        }
+      }
+      
+      // Fallback to local playback only
+      console.log('🎵 [QUEUE] Playing locally only:', nextResponse.id);
+      source.connect(audioContextRef.current.destination);
+      
+      console.log('🔍 [QUEUE] Fallback - storing audio source reference');
+      currentAudioSourceRef.current = source;
+      
+      // Handle audio completion
+      source.onended = () => {
+        console.log('🎵 [QUEUE] Audio playback completed:', nextResponse.id);
+        
+        // Remove completed item from queue and play next
+        setAudioQueue(prev => {
+          const updatedQueue = prev.slice(1);
+          setTimeout(() => {
+            playNextInQueue(updatedQueue);
+          }, 100); // Small delay to prevent audio overlap
+          return updatedQueue;
+        });
+      };
+      
+      // Start playback
+      source.start();
+      console.log('🎵 [QUEUE] Audio playback started:', nextResponse.id);
+      
+    } catch (error) {
+      console.error('❌ [QUEUE] Error playing audio:', error);
+      
+      // Remove failed item and try next
+      setAudioQueue(prev => {
+        const updatedQueue = prev.slice(1);
+        setTimeout(() => {
+          playNextInQueue(updatedQueue);
+        }, 100);
+        return updatedQueue;
+      });
+    }
+  };
+
+  const stopCurrentAudio = async () => {
+    console.log('🛑 [INTERRUPT] Stopping current audio playback');
+    console.log('🔍 [INTERRUPT] Debug - currentAudioSourceRef.current:', currentAudioSourceRef.current);
+    console.log('🔍 [INTERRUPT] Debug - currentLiveKitTrackRef.current:', currentLiveKitTrackRef.current);
+    console.log('🔍 [INTERRUPT] Debug - isHeroSpeakingRef.current:', isHeroSpeakingRef.current);
+    
+    // Stop current audio source immediately
+    if (currentAudioSourceRef.current) {
+      try {
+        currentAudioSourceRef.current.stop();
+        currentAudioSourceRef.current.disconnect();
+        currentAudioSourceRef.current = null;
+        console.log('✅ [INTERRUPT] Audio source stopped immediately');
+      } catch (error) {
+        console.warn('⚠️ [INTERRUPT] Error stopping audio source:', error);
+      }
+    }
+    
+    // Stop LiveKit track immediately
+    if (currentLiveKitTrackRef.current) {
+      try {
+        // First disable the track to stop audio immediately
+        currentLiveKitTrackRef.current.enabled = false;
+        console.log('✅ [INTERRUPT] LiveKit track disabled immediately');
+        
+        // Then stop the track
+        currentLiveKitTrackRef.current.stop();
+        console.log('✅ [INTERRUPT] LiveKit track stopped immediately');
+        
+        // Also try to unpublish it
+        const currentRoom = roomRef.current;
+        if (currentRoom && currentRoom.state === 'connected') {
+          try {
+            await currentRoom.localParticipant.unpublishTrack(currentLiveKitTrackRef.current);
+            console.log('✅ [INTERRUPT] LiveKit track unpublished');
+          } catch (unpublishError) {
+            console.warn('⚠️ [INTERRUPT] Error unpublishing LiveKit track:', unpublishError);
+          }
+        }
+        
+        currentLiveKitTrackRef.current = null;
+      } catch (error) {
+        console.warn('⚠️ [INTERRUPT] Error stopping LiveKit track:', error);
+      }
+    }
+    
+    // Also try to suspend the entire audio context for immediate stop
+    if (audioContextRef.current && audioContextRef.current.state === 'running') {
+      try {
+        audioContextRef.current.suspend();
+        console.log('✅ [INTERRUPT] Audio context suspended for immediate stop');
+        // Resume after a short delay to allow for future audio
+        setTimeout(() => {
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume();
+            console.log('✅ [INTERRUPT] Audio context resumed after interruption');
+          }
+        }, 100);
+      } catch (error) {
+        console.warn('⚠️ [INTERRUPT] Error suspending audio context:', error);
+      }
+    }
+    
+    // Try to unpublish any LiveKit tracks immediately
+    const currentRoom = roomRef.current;
+    if (currentRoom && currentRoom.state === 'connected') {
+      try {
+        // Find and unpublish hero-tts-audio tracks
+        const heroTracks = Array.from(currentRoom.localParticipant.trackPublications.values())
+          .filter(track => track.trackName === 'hero-tts-audio' && track.track);
+        
+        heroTracks.forEach(async (track) => {
+          try {
+            await currentRoom.localParticipant.unpublishTrack(track.track!);
+            console.log('✅ [INTERRUPT] Unpublished LiveKit track:', track.trackSid);
+          } catch (error) {
+            console.warn('⚠️ [INTERRUPT] Error unpublishing track:', error);
+          }
+        });
+      } catch (error) {
+        console.warn('⚠️ [INTERRUPT] Error cleaning up LiveKit tracks:', error);
+      }
+    }
+    
+    // Clear the queue and reset states immediately
+    setAudioQueue([]);
+    setIsPlayingQueue(false);
+    setIsHeroSpeaking(false);
+    isHeroSpeakingRef.current = false;
+    currentPlayingRef.current = null;
+    
+    console.log('✅ [INTERRUPT] Audio stopped and queue cleared');
+  };
+
+  const clearAudioQueue = () => {
+    console.log('🧹 [QUEUE] Clearing audio queue');
+    setAudioQueue([]);
+    setIsPlayingQueue(false);
+    setIsHeroSpeaking(false);
+    isHeroSpeakingRef.current = false;
+    currentPlayingRef.current = null;
+  };
+
+  const getQueueStatus = () => {
+    return {
+      queueLength: audioQueue.length,
+      isPlaying: isPlayingQueue,
+      currentPlaying: currentPlayingRef.current
+    };
+  };
+
+  // Interruption detection function
+  const checkForInterruption = (text: string): boolean => {
+    const cleanText = text.trim().toLowerCase();
+    console.log('🔍 [INTERRUPT] Checking text for interruption phrases:', cleanText);
+    
+    for (const phrase of interruptionPhrases) {
+      if (phrase.test(cleanText)) {
+        console.log('🛑 [INTERRUPT] Interruption phrase detected:', text, 'matched pattern:', phrase);
+        return true;
+      }
+    }
+    
+    console.log('✅ [INTERRUPT] No interruption phrases found in:', cleanText);
+    return false;
   };
 
   // Keep refs in sync with state to avoid stale closures
@@ -1348,6 +1687,23 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       sttServiceRef.current.onTranscript(async (result: STTResult) => {
         console.log('🎤 [STT] Transcript received:', result.text);
         
+        // Check for interruption phrases first
+        if (checkForInterruption(result.text)) {
+          console.log('🛑 [INTERRUPT] Interruption detected, stopping Hero audio');
+          await stopCurrentAudio();
+          
+          // Add interruption message to transcript
+          await addTranscript({
+            id: generateMessageId(),
+            text: '🛑 Hero audio stopped',
+            speaker: 'system',
+            timestamp: result.timestamp,
+            isTranscript: true
+          });
+          
+          return; // Don't process further
+        }
+        
         // Use participant name (not identity with suffix) for speaker identification
         // Use refs to avoid stale closure
         const currentParticipantName = participantNameRef.current;
@@ -1448,9 +1804,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         }
       });
 
-      // Set up interim result callback to keep accumulator alive
+      // Set up interim result callback to keep accumulator alive and check for interruptions
       if (sttServiceRef.current.onInterimResult) {
-        sttServiceRef.current.onInterimResult((interimText: string) => {
+        sttServiceRef.current.onInterimResult(async (interimText: string) => {
+          console.log('🎤 [INTERIM] Interim result:', interimText);
+          
+          // Check for interruption phrases in interim results
+          if (checkForInterruption(interimText)) {
+            console.log('🛑 [INTERRUPT] Interruption phrase detected in interim result:', interimText);
+            await stopCurrentAudio();
+            
+            // Add interruption message to transcript
+            addTranscript({
+              id: generateMessageId(),
+              text: '🛑 Hero audio stopped',
+              speaker: 'system',
+              timestamp: Date.now(),
+              isTranscript: true
+            });
+            
+            return; // Don't process further
+          }
+          
           // Get this participant's accumulator
           const accumulator = getAccumulator();
           
@@ -1564,140 +1939,23 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         // Broadcast Hero message to all participants
         await broadcastHeroMessage(cleanResponse, messageId);
         
-        // Play TTS audio if available - broadcast to all participants
+        // Play TTS audio if available - use audio queue system
         if (data.audioBuffer) {
-          const currentRoom = roomRef.current;
-          if (!currentRoom || currentRoom.state !== 'connected') {
-            console.warn('❌ [FRONTEND] Room not available for broadcasting. Room:', currentRoom?.state || 'null');
-            // Fallback to local playback only
-            try {
-              // Initialize audio context if not already done
-              if (!audioContextRef.current) {
-                audioContextRef.current = new AudioContext();
-              }
-              
-              // Resume audio context if suspended (required for user interaction)
-              if (audioContextRef.current.state === 'suspended') {
-                await audioContextRef.current.resume();
-              }
-              
-              const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
-              const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
-              const source = audioContextRef.current.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(audioContextRef.current.destination);
-              source.start();
-              console.log('✅ [FRONTEND] Hero audio played locally (no room for broadcasting)');
-            } catch (audioError) {
-              console.warn('❌ [FRONTEND] Local audio playback failed:', audioError);
-            }
-          } else {
-            console.log('🎵 [FRONTEND] === BROADCASTING TTS AUDIO TO ALL PARTICIPANTS ===');
-            console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
-            console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
-            console.log('🎵 [FRONTEND] Room state:', currentRoom.state);
-            console.log('🎵 [FRONTEND] Room participants:', currentRoom.numParticipants);
+          console.log('🎵 [FRONTEND] === ADDING TO AUDIO QUEUE ===');
+          console.log('🎵 [FRONTEND] Audio buffer size:', data.audioBuffer?.length || 0, 'characters (base64)');
+          console.log('🎵 [FRONTEND] Audio duration:', data.duration, 'seconds');
           
-          try {
-            // Initialize audio context if not already done
-            if (!audioContextRef.current) {
-              audioContextRef.current = new AudioContext();
-            console.log('🎵 [FRONTEND] Creating audio context...');
-            }
-            
-            // Resume audio context if suspended (required for user interaction)
-            if (audioContextRef.current.state === 'suspended') {
-              await audioContextRef.current.resume();
-              console.log('🎵 [FRONTEND] Audio context resumed');
-            }
-            
-            // Decode audio data
-            const audioData = Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0));
-            console.log('🎵 [FRONTEND] Decoded audio data size:', audioData.length, 'bytes');
-            
-            const audioBuffer = await audioContextRef.current.decodeAudioData(audioData.buffer);
-            console.log('🎵 [FRONTEND] Audio buffer created successfully');
-            
-            // Create a MediaStreamDestination to capture audio
-            const destination = audioContextRef.current.createMediaStreamDestination();
-            
-            // Create source and connect to destination
-            const source = audioContextRef.current.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(destination);
-            source.connect(audioContextRef.current.destination); // Also play locally
-            
-            // Get audio track from the MediaStream
-            const audioTrack = destination.stream.getAudioTracks()[0];
-            
-            if (audioTrack) {
-              console.log('🎵 [FRONTEND] Creating LiveKit audio track from TTS...');
-              console.log('🎵 [FRONTEND] Audio track details:', {
-                id: audioTrack.id,
-                label: audioTrack.label,
-                enabled: audioTrack.enabled,
-                muted: audioTrack.muted,
-                readyState: audioTrack.readyState
-              });
-              
-            // Publish audio track to LiveKit so all participants can hear
-            const publication = await currentRoom.localParticipant.publishTrack(audioTrack, {
-                name: 'hero-tts-audio',
-                source: 'microphone' as any, // Use microphone source for compatibility
-              });
-              
-              console.log('✅ [FRONTEND] Hero TTS audio published to LiveKit!');
-              console.log('✅ [FRONTEND] Publication details:', {
-                trackSid: publication.trackSid,
-                trackName: publication.trackName,
-                source: publication.source,
-                subscribed: publication.isSubscribed
-              });
-              
-              // Force enable the track to ensure it's available to all participants
-              audioTrack.enabled = true;
-              console.log('✅ [FRONTEND] Audio track enabled for broadcasting');
-              
-              // Notify all participants about the Hero audio
-              console.log('📢 [FRONTEND] Broadcasting Hero audio to', currentRoom.numParticipants, 'participants');
-              
-              // Start playback
-            source.start();
-              console.log('✅ [FRONTEND] Audio playback started and broadcasting!');
-              
-              // Clean up after playback
-              source.onended = async () => {
-                console.log('🧹 [FRONTEND] TTS playback ended, cleaning up LiveKit track...');
-                try {
-                  await currentRoom.localParticipant.unpublishTrack(audioTrack);
-                  audioTrack.stop();
-                  console.log('✅ [FRONTEND] Hero TTS audio track cleaned up');
-                } catch (cleanupError) {
-                  console.warn('⚠️ [FRONTEND] Error cleaning up TTS track:', cleanupError);
-                }
-              };
-            } else {
-              console.warn('⚠️ [FRONTEND] No audio track available, falling back to local playback');
-              source.connect(audioContextRef.current.destination);
-              source.start();
-            }
-            
-          } catch (audioError) {
-            console.warn('❌ [FRONTEND] Error playing TTS audio:', audioError);
-            // Fallback: try using HTML5 audio element
-            try {
-              const audioBlob = new Blob([Uint8Array.from(atob(data.audioBuffer), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
-              const audioUrl = URL.createObjectURL(audioBlob);
-              const audio = new Audio(audioUrl);
-              await audio.play();
-              console.log('✅ [FRONTEND] Fallback audio playback started!');
-              // Clean up the URL after playback
-              audio.onended = () => URL.revokeObjectURL(audioUrl);
-            } catch (fallbackError) {
-              console.warn('❌ [FRONTEND] Fallback audio playback also failed:', fallbackError);
-            }
-          }
-          }
+          // Add to audio queue instead of playing immediately
+          const queuedResponse: QueuedResponse = {
+            id: messageId,
+            text: cleanResponse,
+            audioBuffer: data.audioBuffer,
+            timestamp: Date.now(),
+            duration: data.duration || 0
+          };
+          
+          addToAudioQueue(queuedResponse);
+          console.log('✅ [FRONTEND] Response added to audio queue');
         } else {
           if (!data.audioBuffer) {
             console.log('⚠️ [FRONTEND] No audio buffer provided in response');
@@ -2558,26 +2816,70 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </svg>
           </button>
         </div>
-      </div>
+        </div>
 
-      {/* Sidebar */}
-      <div style={{
-        width: '320px',
-        height: '100vh',
-        background: 'linear-gradient(180deg, #0f172a 0%, #1e293b 100%)',
-        borderLeft: '1px solid rgba(59, 130, 246, 0.1)',
-        padding: '24px',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        backdropFilter: 'blur(10px)',
-        flexShrink: 0
-      }}>
-        {/* Meeting Attendees */}
-        <div style={{ 
-          borderBottom: '1px solid rgba(59, 130, 246, 0.1)', 
-          paddingBottom: '24px', 
-          marginBottom: '24px' 
+        {/* Sidebar Toggle Button */}
+        <button
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          style={{
+            position: 'fixed',
+            right: isSidebarCollapsed ? '20px' : '340px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+            zIndex: 1000,
+            width: '44px',
+            height: '44px',
+            borderRadius: '12px',
+            backgroundColor: 'rgba(15, 23, 42, 0.95)',
+            border: '1px solid rgba(148, 163, 184, 0.2)',
+            color: '#f1f5f9',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            backdropFilter: 'blur(8px)'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(30, 41, 59, 0.95)';
+            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.4)';
+            e.currentTarget.style.transform = 'translateY(-50%) scale(1.05)';
+            e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(15, 23, 42, 0.95)';
+            e.currentTarget.style.borderColor = 'rgba(148, 163, 184, 0.2)';
+            e.currentTarget.style.transform = 'translateY(-50%) scale(1)';
+            e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
+          }}
+        >
+          {isSidebarCollapsed ? <HiChevronLeft size={20} /> : <HiChevronRight size={20} />}
+        </button>
+
+        {/* Sidebar */}
+        <div style={{
+          width: isSidebarCollapsed ? '0px' : '320px',
+          height: '100vh',
+          background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)',
+          borderLeft: isSidebarCollapsed ? 'none' : '1px solid rgba(148, 163, 184, 0.1)',
+          padding: isSidebarCollapsed ? '0px' : '24px',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          backdropFilter: 'blur(12px)',
+          flexShrink: 0,
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          opacity: isSidebarCollapsed ? 0 : 1,
+          boxShadow: isSidebarCollapsed ? 'none' : '-4px 0 6px -1px rgba(0, 0, 0, 0.1)'
         }}>
+          {!isSidebarCollapsed && (
+            <>
+              {/* Meeting Attendees */}
+              <div style={{ 
+                borderBottom: '1px solid rgba(59, 130, 246, 0.1)', 
+                paddingBottom: '24px', 
+                marginBottom: '24px' 
+              }}>
           <div style={{ 
             display: 'flex', 
             alignItems: 'center', 
@@ -2672,17 +2974,23 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           ))}
         </div>
 
-        {/* STT Provider Selection */}
-        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{
-              width: '12px',
-              height: '12px',
-              backgroundColor: '#3b82f6',
-              borderRadius: '50%'
-            }}></div>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Speech Recognition</h3>
-          </div>
+              {/* STT Provider Selection */}
+              <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid rgba(59, 130, 246, 0.2)'
+                  }}>
+                    <HiMicrophone size={16} color="#3b82f6" />
+                  </div>
+                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Speech Recognition</h3>
+                </div>
           
           <div style={{
             backgroundColor: '#374151',
@@ -2725,17 +3033,23 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           </div>
         </div>
 
-        {/* TTS Provider Selection */}
-        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{
-              width: '12px',
-              height: '12px',
-              backgroundColor: '#f59e0b',
-              borderRadius: '50%'
-            }}></div>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Text-to-Speech</h3>
-          </div>
+              {/* TTS Provider Selection */}
+              <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid rgba(245, 158, 11, 0.2)'
+                  }}>
+                    <HiVolumeUp size={16} color="#f59e0b" />
+                  </div>
+                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Text-to-Speech</h3>
+                </div>
           
           <div style={{
             backgroundColor: '#374151',
@@ -2778,17 +3092,24 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           </div>
         </div>
 
-        {/* Live Transcription */}
-        <div className="sidebar-section" style={{ marginBottom: '16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-            <div style={{
-              width: '12px',
-              height: '12px',
-              backgroundColor: '#22c55e',
-              borderRadius: '50%'
-            }}></div>
-            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Live Transcription</h3>
-          </div>
+
+              {/* Live Transcription */}
+              <div className="sidebar-section" style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{
+                    width: '32px',
+                    height: '32px',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: '1px solid rgba(34, 197, 94, 0.2)'
+                  }}>
+                    <HiDocumentText size={16} color="#22c55e" />
+                  </div>
+                  <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>Live Transcription</h3>
+                </div>
           
           <div ref={transcriptContainerRef} style={{
             backgroundColor: '#374151',
@@ -2846,9 +3167,23 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         
         {/* Chat with Hero */}
         <div className="sidebar-section">
-          <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', marginBottom: '12px' }}>
-            Chat with Hero AI
-          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: '1px solid rgba(139, 92, 246, 0.2)'
+            }}>
+              <HiChatAlt2 size={16} color="#8b5cf6" />
+            </div>
+            <h3 style={{ color: 'white', fontSize: '16px', fontWeight: '600', margin: '0' }}>
+              Chat with Hero AI
+            </h3>
+          </div>
           
           <div style={{
             backgroundColor: '#374151',
@@ -2972,7 +3307,180 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </div>
           </form>
         </div>
-      </div>
+            </>
+          )}
+        </div>
+
+        {/* Collapsed Sidebar - Professional Icon View */}
+        {isSidebarCollapsed && (
+          <div style={{
+            position: 'fixed',
+            right: '0px',
+            top: '0px',
+            width: '72px',
+            height: '100vh',
+            background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%)',
+            borderLeft: '1px solid rgba(148, 163, 184, 0.1)',
+            padding: '24px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '16px',
+            zIndex: 998,
+            backdropFilter: 'blur(12px)',
+            boxShadow: '-4px 0 6px -1px rgba(0, 0, 0, 0.1)'
+          }}>
+            {/* Participants Icon */}
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+              e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.2)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title={`${room ? (participants.filter(p => p.identity !== 'hero-bot').length + 2) : 2} participants`}
+            >
+              <HiUsers size={20} color="#3b82f6" />
+              <div style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                width: '16px',
+                height: '16px',
+                borderRadius: '50%',
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                fontSize: '10px',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                {room ? (participants.filter(p => p.identity !== 'hero-bot').length + 2) : 2}
+              </div>
+            </div>
+
+            {/* Transcript Icon */}
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.2)';
+              e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.2)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title={`${transcript.length} transcript messages`}
+            >
+              <HiDocumentText size={20} color="#22c55e" />
+              {transcript.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '-4px',
+                  right: '-4px',
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  backgroundColor: '#22c55e',
+                  color: 'white',
+                  fontSize: '10px',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  {transcript.length > 99 ? '99+' : transcript.length}
+                </div>
+              )}
+            </div>
+
+            {/* Hero AI Icon */}
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(139, 92, 246, 0.1)',
+              border: '1px solid rgba(139, 92, 246, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(139, 92, 246, 0.2)';
+              e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.4)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(139, 92, 246, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.2)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Chat with Hero AI"
+            >
+              <HiChatAlt2 size={20} color="#8b5cf6" />
+            </div>
+
+            {/* Settings Icon */}
+            <div style={{
+              width: '48px',
+              height: '48px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(107, 114, 128, 0.1)',
+              border: '1px solid rgba(107, 114, 128, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(107, 114, 128, 0.2)';
+              e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.4)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(107, 114, 128, 0.1)';
+              e.currentTarget.style.borderColor = 'rgba(107, 114, 128, 0.2)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+            title="Speech & TTS Settings"
+            >
+              <HiCog size={20} color="#6b7280" />
+            </div>
+          </div>
+        )}
 
       {/* Hidden audio element */}
       <audio ref={audioRef} autoPlay />
