@@ -214,7 +214,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         },
         // Force simulcast for better compatibility
         publishDefaults: {
-          simulcast: false, // Disable simulcast for simpler negotiation
+          simulcast: true,  // Enable adaptive bitrate
+          videoCodec: 'h264',
+          // VideoBitrate: 500000,  // 500kbps max bitrate
         }
       });
 
@@ -231,8 +233,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         [localVideo, localAudio] = await Promise.all([
           createLocalVideoTrack({
             resolution: {
-              width: 1280,
-              height: 720
+              width: 640,
+              height: 480
             },
             facingMode: 'user'
           }),
