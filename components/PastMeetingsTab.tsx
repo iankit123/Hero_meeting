@@ -10,6 +10,7 @@ interface Meeting {
   duration_minutes?: number;
   participant_count: number;
   summary?: string;
+  participant_names?: string[]; // Add participant names
 }
 
 interface Transcript {
@@ -41,7 +42,32 @@ const PastMeetingsTab: React.FC = () => {
       const data = await response.json();
 
       if (data.success) {
-        setMeetings(data.meetings || []);
+        // Fetch participant names for each meeting
+        const meetingsWithNames = await Promise.all(
+          (data.meetings || []).map(async (meeting: Meeting) => {
+            try {
+              const transcriptResponse = await fetch(`/api/meetings/export-transcript?roomName=${encodeURIComponent(meeting.room_name)}`);
+              const transcriptData = await transcriptResponse.json();
+              
+              if (transcriptData.transcripts && Array.isArray(transcriptData.transcripts)) {
+                // Extract unique participant names (excluding system messages and 'hero')
+                const uniqueNames = Array.from(
+                  new Set(
+                    transcriptData.transcripts
+                      .filter((t: Transcript) => t.speaker && t.speaker !== 'system' && t.speaker !== 'Hero AI' && t.speaker.toLowerCase() !== 'hero')
+                      .map((t: Transcript) => t.speaker)
+                  )
+                );
+                return { ...meeting, participant_names: uniqueNames };
+              }
+            } catch (error) {
+              console.error('Error fetching participant names:', error);
+            }
+            return { ...meeting, participant_names: [] };
+          })
+        );
+        
+        setMeetings(meetingsWithNames);
       }
     } catch (error) {
       console.error('Error loading meetings:', error);
@@ -305,7 +331,14 @@ const PastMeetingsTab: React.FC = () => {
                         <circle cx="9" cy="7" r="4" />
                         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
                       </svg>
-                      <span>{meeting.participant_count} participant{meeting.participant_count !== 1 ? 's' : ''}</span>
+                      <span>
+                        {meeting.participant_count} participant{meeting.participant_count !== 1 ? 's' : ''}
+                        {meeting.participant_names && meeting.participant_names.length > 0 && (
+                          <span style={{ marginLeft: '8px', color: '#667eea', fontWeight: '500' }}>
+                            ({meeting.participant_names.join(', ')})
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
                 </div>

@@ -62,12 +62,10 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
       if (meeting.summary) {
         setSummary(meeting.summary);
         setShowSummary(true);
-      } else {
-        // Generate summary if not exists
-        generateSummary();
       }
+      // Don't auto-generate summary - only generate when user clicks button
     }
-  }, [isOpen, meeting, generateSummary]);
+  }, [isOpen, meeting]);
 
   if (!isOpen || !meeting) return null;
 
@@ -241,7 +239,9 @@ const TranscriptModal: React.FC<TranscriptModalProps> = ({ isOpen, onClose, meet
               backgroundColor: 'white',
               padding: '16px',
               borderRadius: '8px',
-              border: '1px solid #e5e7eb'
+              border: '1px solid #e5e7eb',
+              maxHeight: '400px',
+              overflowY: 'auto'
             }}>
               {summary.split('\n').map((line, index) => {
                 // Handle bullet points
