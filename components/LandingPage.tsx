@@ -512,7 +512,7 @@ export default function LandingPage() {
                 Voice-Activated AI
               </h3>
               <p style={{ color: '#d1d5db', lineHeight: '1.6', margin: 0 }}>
-                Simply say "Hey Hero" to activate AI assistance and get instant answers during your meetings.
+                Simply say &quot;Hey Hero&quot; to activate AI assistance and get instant answers during your meetings.
               </p>
             </div>
 
@@ -688,7 +688,7 @@ export default function LandingPage() {
                 Get AI Insights
               </h3>
               <p style={{ color: '#d1d5db', lineHeight: '1.6', margin: 0 }}>
-                Ask "Hey Hero" for instant answers and access meeting summaries and transcripts anytime.
+                Ask &quot;Hey Hero&quot; for instant answers and access meeting summaries and transcripts anytime.
               </p>
             </div>
           </div>
