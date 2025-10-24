@@ -14,7 +14,7 @@
     "@huggingface/inference": "^4.11.1",
     "@supabase/supabase-js": "^2.75.0",
     "deepgram": "^1.0.3",
-    "dotenv": "^17.2.2",
+    "dotenv": "^17.2.3",
     "livekit-client": "^2.13.3",
     "livekit-server-sdk": "^2.13.3",
     "lottie-react": "^2.4.1",
