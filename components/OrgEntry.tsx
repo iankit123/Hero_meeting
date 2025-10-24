@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 
 const OrgEntry: React.FC = () => {
@@ -6,6 +6,13 @@ const OrgEntry: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+
+  // Clear cached organization when page loads
+  useEffect(() => {
+    localStorage.removeItem('hero_meeting_org');
+    localStorage.removeItem('hero_meeting_org_display');
+    console.log('🧹 [ORG] Cleared cached organization');
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

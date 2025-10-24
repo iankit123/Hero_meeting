@@ -11,16 +11,8 @@ export default function LandingPage() {
   const handleCreateMeeting = async () => {
     setIsCreating(true);
     try {
-      // Check if org is already set
-      const orgName = localStorage.getItem('hero_meeting_org');
-      
-      if (orgName) {
-        // Org already set, go to dashboard
-        router.push('/dashboard');
-      } else {
-        // Need to set org first
-        router.push('/org-entry');
-      }
+      // Always prompt for organization first
+      router.push('/org-entry');
     } catch (error) {
       console.error('Error:', error);
     } finally {
