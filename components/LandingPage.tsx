@@ -12,7 +12,7 @@ export default function LandingPage() {
     setIsCreating(true);
     try {
       // Always prompt for organization first
-      router.push('/org-entry');
+        router.push('/org-entry');
     } catch (error) {
       console.error('Error:', error);
     } finally {

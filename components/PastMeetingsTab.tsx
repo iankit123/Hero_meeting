@@ -23,17 +23,69 @@ interface Transcript {
 const PastMeetingsTab: React.FC = () => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<Meeting | null>(null);
   const [selectedTranscripts, setSelectedTranscripts] = useState<Transcript[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // Load cached data immediately, then refresh in background
   useEffect(() => {
-    loadMeetings();
+    loadCachedMeetings();
+    loadMeetings(true); // Background refresh
   }, []);
 
-  const loadMeetings = async () => {
-    setIsLoading(true);
+  // Load cached meetings from localStorage
+  const loadCachedMeetings = () => {
+    try {
+      const orgName = localStorage.getItem('hero_meeting_org');
+      if (!orgName) return;
+
+      const cacheKey = `meetings_cache_${orgName}`;
+      const cachedData = localStorage.getItem(cacheKey);
+      
+      if (cachedData) {
+        const parsedData = JSON.parse(cachedData);
+        const cacheAge = Date.now() - parsedData.timestamp;
+        const MAX_CACHE_AGE = 5 * 60 * 1000; // 5 minutes
+        
+        if (cacheAge < MAX_CACHE_AGE) {
+          console.log('📦 Loading cached meetings...');
+          setMeetings(parsedData.meetings);
+          setIsLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cached meetings:', error);
+    }
+  };
+
+  // Save meetings to cache
+  const saveMeetingsToCache = (meetings: Meeting[]) => {
+    try {
+      const orgName = localStorage.getItem('hero_meeting_org');
+      if (!orgName) return;
+
+      const cacheKey = `meetings_cache_${orgName}`;
+      const cacheData = {
+        meetings,
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+      console.log('💾 Meetings cached successfully');
+    } catch (error) {
+      console.error('Error caching meetings:', error);
+    }
+  };
+
+  const loadMeetings = async (background = false) => {
+    if (!background) {
+      setIsLoading(true);
+    } else {
+      setIsRefreshing(true);
+    }
+    
     try {
       const orgName = localStorage.getItem('hero_meeting_org');
       if (!orgName) return;
@@ -68,11 +120,13 @@ const PastMeetingsTab: React.FC = () => {
         );
         
         setMeetings(meetingsWithNames);
+        saveMeetingsToCache(meetingsWithNames);
       }
     } catch (error) {
       console.error('Error loading meetings:', error);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
@@ -179,7 +233,8 @@ const PastMeetingsTab: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={loadMeetings}
+          onClick={() => loadMeetings(false)}
+          disabled={isRefreshing}
           style={{
             padding: '10px 20px',
             fontSize: '14px',
@@ -188,25 +243,30 @@ const PastMeetingsTab: React.FC = () => {
             backgroundColor: 'white',
             border: '2px solid #667eea',
             borderRadius: '8px',
-            cursor: 'pointer',
+            cursor: isRefreshing ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px'
+            gap: '8px',
+            opacity: isRefreshing ? 0.5 : 1
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#667eea';
-            e.currentTarget.style.color = 'white';
+            if (!isRefreshing) {
+              e.currentTarget.style.backgroundColor = '#667eea';
+              e.currentTarget.style.color = 'white';
+            }
           }}
           onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'white';
-            e.currentTarget.style.color = '#667eea';
+            if (!isRefreshing) {
+              e.currentTarget.style.backgroundColor = 'white';
+              e.currentTarget.style.color = '#667eea';
+            }
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
           </svg>
-          Refresh
+          {isRefreshing ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
