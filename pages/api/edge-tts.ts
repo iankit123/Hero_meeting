@@ -12,44 +12,55 @@ const pipelineAsync = promisify(pipeline);
 async function generateAudioWithPython(text: string, voice: string, speed: number): Promise<Buffer> {
   console.log('🐍 [EDGE-TTS-PYTHON] Using Python-based Edge TTS...');
   
+  // Escape text for Python script
+  const escapedText = text.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  
   const pythonScript = `
-import edge_tts
-import asyncio
-import tempfile
-import os
 import sys
+try:
+    import edge_tts
+    import asyncio
+    import tempfile
+    import os
+    import base64
 
-async def synthesize():
-    try:
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-        
-        # Generate audio
-        communicate = edge_tts.Communicate(text="${text.replace(/"/g, '\\"')}", voice="${voice}")
-        await communicate.save(tmp_path)
-        
-        # Read file and return as base64
-        with open(tmp_path, 'rb') as f:
-            audio_data = f.read()
-        
-        # Clean up
-        os.unlink(tmp_path)
-        
-        # Return base64 encoded data
-        import base64
-        print(base64.b64encode(audio_data).decode('utf-8'))
-        
-    except Exception as e:
-        print(f"ERROR: {str(e)}", file=sys.stderr)
-        sys.exit(1)
+    async def synthesize():
+        try:
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
+            
+            # Generate audio
+            communicate = edge_tts.Communicate(text="${escapedText}", voice="${voice}")
+            await communicate.save(tmp_path)
+            
+            # Read file and return as base64
+            with open(tmp_path, 'rb') as f:
+                audio_data = f.read()
+            
+            # Clean up
+            os.unlink(tmp_path)
+            
+            # Return base64 encoded data
+            print(base64.b64encode(audio_data).decode('utf-8'))
+            
+        except Exception as e:
+            print(f"ERROR: {str(e)}", file=sys.stderr)
+            sys.exit(1)
 
-asyncio.run(synthesize())
+    asyncio.run(synthesize())
+except ImportError:
+    print("ERROR: edge_tts module not available", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"ERROR: {str(e)}", file=sys.stderr)
+    sys.exit(1)
 `;
 
   return new Promise((resolve, reject) => {
     const pythonProcess = spawn('python3', ['-c', pythonScript], {
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      timeout: 30000 // 30 second timeout
     });
 
     let stdout = '';
@@ -64,7 +75,7 @@ asyncio.run(synthesize())
     });
 
     pythonProcess.on('close', (code) => {
-      if (code === 0) {
+      if (code === 0 && stdout.trim()) {
         try {
           const audioBuffer = Buffer.from(stdout.trim(), 'base64');
           console.log('✅ [EDGE-TTS-PYTHON] Audio generated, size:', audioBuffer.length, 'bytes');
@@ -203,7 +214,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         
       } catch (cliError) {
         console.error('❌ [EDGE-TTS-API] Both Python and CLI failed:', cliError instanceof Error ? cliError.message : 'Unknown error');
-        throw new Error(`Edge TTS synthesis failed: ${cliError instanceof Error ? cliError.message : 'Unknown error'}`);
+        
+        // Final fallback: return error to trigger Google TTS fallback in the service
+        return res.status(500).json({ 
+          error: `Edge TTS synthesis failed: ${cliError instanceof Error ? cliError.message : 'Unknown error'}`,
+          fallback: 'Use Google TTS instead'
+        });
       }
     }
     

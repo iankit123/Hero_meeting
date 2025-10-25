@@ -4,8 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "chmod +x netlify-build.sh && ./netlify-build.sh",
+    "build": "npm run build:next",
     "build:next": "next build",
+    "build:netlify": "chmod +x netlify-build.sh && ./netlify-build.sh",
     "start": "next start",
     "lint": "next lint",
     "bot": "tsx bot/hero.ts",

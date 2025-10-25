@@ -1,14 +1,10 @@
 [build]
-  command = "npm run build"
+  command = "pip install edge-tts && npm run build:next"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "18"
   PYTHON_VERSION = "3.9"
-
-# Install edge-tts during build process
-[build.processing]
-  skip_processing = false
 
 # Functions configuration for serverless functions
 [functions]
