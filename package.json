@@ -4,16 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "npm run build:next",
-    "build:next": "next build",
-    "build:netlify": "chmod +x netlify-build.sh && ./netlify-build.sh",
+    "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "bot": "tsx bot/hero.ts",
-    "postinstall": "pip install edge-tts || echo 'Edge TTS installation failed, will use fallback'"
+    "test-edge-tts": "python3 test-edge-tts.py",
+    "install-python-deps": "pip3 install -r requirements.txt"
   },
   "dependencies": {
-    "@andresaya/edge-tts": "^1.4.4",
     "@google/generative-ai": "^0.2.1",
     "@huggingface/inference": "^4.11.1",
     "@supabase/supabase-js": "^2.75.0",
@@ -31,7 +29,6 @@
     "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@netlify/functions": "^5.0.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

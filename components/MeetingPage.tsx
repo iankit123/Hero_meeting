@@ -32,7 +32,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
-  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
+  const [ttsProvider, setTtsProvider] = useState<'edge' | 'elevenlabs' | 'gtts'>('edge');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -63,7 +63,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const interruptionPhrases = [
     /\b(ok|okay|got it|stop|enough|that's enough|thank you|thanks)\b/i,
     /\b(stop talking|be quiet|shut up|cut it out)\b/i,
-    /\b(interrupt|skip)\b/i,
+    /\b(interrupt|skip|next|move on)\b/i,
     /\b(ok|stop)\s+(latest|funny|ladies)\b/i, // Handle cases like "ok latest", "stop funny"
     /\b(that's|that is)\s+(enough|good|fine)\b/i
   ];
@@ -79,7 +79,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const roomRef = useRef<Room | null>(null);
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
-  const ttsProviderRef = useRef<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
+  const ttsProviderRef = useRef<'edge' | 'elevenlabs' | 'gtts'>('edge');
   const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
   
   // Hero query accumulation - per participant using Map
@@ -455,17 +455,14 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
         sttServiceRef.current.stopTranscription();
       }
       // Clean up all hero query accumulator timeouts
-      const currentAccumulators = heroQueryAccumulators.current;
-      if (currentAccumulators) {
-        currentAccumulators.forEach((accumulator, participantId) => {
-          if (accumulator.timeout) {
-            clearTimeout(accumulator.timeout);
-          }
-        });
-        currentAccumulators.clear();
-      }
+      heroQueryAccumulators.current.forEach((accumulator, participantId) => {
+        if (accumulator.timeout) {
+          clearTimeout(accumulator.timeout);
+        }
+      });
+      heroQueryAccumulators.current.clear();
     };
-  }, [roomName, participantName]);
+  }, [roomName, participantName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Initialize audio context on first user interaction
   useEffect(() => {
@@ -1644,7 +1641,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Broadcast TTS provider change to all participants
-  const broadcastTtsProviderChange = async (provider: 'elevenlabs' | 'gtts' | 'edgetts') => {
+  const broadcastTtsProviderChange = async (provider: 'edge' | 'elevenlabs' | 'gtts') => {
     const currentRoom = roomRef.current;
     const currentParticipantName = participantNameRef.current;
     
@@ -1919,19 +1916,6 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const data = await response.json();
       console.log('\n📥 [FRONTEND] === HERO RESPONSE RECEIVED ===');
       console.log('📥 [FRONTEND] Full API response:', data);
-      console.log('🎵 [FRONTEND] TTS Provider used by server:', data.ttsProvider);
-      console.log('🎵 [FRONTEND] TTS Service used by server:', data.ttsServiceUsed);
-      console.log('🎵 [FRONTEND] Requested TTS Provider:', ttsProviderRef.current);
-      
-      // Check for TTS provider mismatch
-      if (data.ttsProvider && ttsProviderRef.current && data.ttsProvider !== ttsProviderRef.current) {
-        console.warn('⚠️ [FRONTEND] TTS Provider mismatch!');
-        console.warn('⚠️ [FRONTEND] Requested:', ttsProviderRef.current);
-        console.warn('⚠️ [FRONTEND] Actually used:', data.ttsProvider);
-        console.warn('⚠️ [FRONTEND] Service used:', data.ttsServiceUsed);
-      } else if (data.ttsProvider && ttsProviderRef.current) {
-        console.log('✅ [FRONTEND] TTS Provider match:', data.ttsProvider);
-      }
       
       if (data.success && data.response) {
         console.log('✅ [FRONTEND] Hero response successful!');
@@ -2314,7 +2298,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     await handleSttProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
-  const handleTtsProviderSwitch = async (newProvider: 'elevenlabs' | 'gtts' | 'edgetts', shouldBroadcast: boolean = true) => {
+  const handleTtsProviderSwitch = async (newProvider: 'edge' | 'elevenlabs' | 'gtts', shouldBroadcast: boolean = true) => {
     try {
       const currentParticipantName = participantNameRef.current;
       console.log('🔄 [TTS] === SWITCHING TTS PROVIDER ===');
@@ -2337,7 +2321,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : newProvider === 'gtts' ? 'Google TTS' : 'Edge TTS'} TTS`,
+        text: `🎵 ${changeSource} switched to ${newProvider === 'edge' ? 'Edge TTS' : newProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -2357,8 +2341,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Wrapper for UI-triggered TTS provider toggle
-  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts' | 'edgetts') => {
-    const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : ttsProvider === 'gtts' ? 'edgetts' : 'elevenlabs');
+  const toggleTTSProvider = async (newProvider?: 'edge' | 'elevenlabs' | 'gtts') => {
+    const targetProvider = newProvider || (ttsProvider === 'edge' ? 'elevenlabs' : ttsProvider === 'elevenlabs' ? 'gtts' : 'edge');
     await handleTtsProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
@@ -3076,7 +3060,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             <select
               value={ttsProvider}
               onChange={(e) => {
-                const newProvider = e.target.value as 'elevenlabs' | 'gtts' | 'edgetts';
+                const newProvider = e.target.value as 'edge' | 'elevenlabs' | 'gtts';
                 if (newProvider !== ttsProvider) {
                   toggleTTSProvider(newProvider);
                 }
@@ -3102,9 +3086,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 e.target.style.boxShadow = 'none';
               }}
             >
+              <option value="edge">Edge TTS</option>
               <option value="elevenlabs">ElevenLabs</option>
               <option value="gtts">Google TTS</option>
-              <option value="edgetts">Edge TTS</option>
             </select>
           </div>
         </div>

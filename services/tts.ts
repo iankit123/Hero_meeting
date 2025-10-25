@@ -7,7 +7,7 @@ export interface TTSResult {
   duration: number;
 }
 
-export type TTSProvider = 'elevenlabs' | 'gtts' | 'edgetts';
+export type TTSProvider = 'edge' | 'elevenlabs' | 'gtts';
 
 // Text sanitization function to clean text for TTS
 function sanitizeText(text: string): string {
@@ -19,6 +19,65 @@ function sanitizeText(text: string): string {
     .replace(/\s{2,}/g, " ") // collapse multiple spaces
     .replace(/\s+([.,!?;:])/g, "$1") // clean space before punctuation
     .trim();
+}
+
+// -------------------- EDGE TTS --------------------
+export class EdgeTTSService implements TTSService {
+  private baseUrl = '/api/tts-edge';
+
+  async synthesize(text: string, voiceId: string = 'en-US-AriaNeural', speed?: number): Promise<TTSResult> {
+    console.log('🎙️ [EDGE-TTS] === SYNTHESIZE START ===');
+    console.log('🎙️ [EDGE-TTS] Text length:', text.length);
+    console.log('🎙️ [EDGE-TTS] Voice:', voiceId);
+    
+    const sanitizedText = sanitizeText(text);
+    console.log('🧹 [EDGE-TTS] Sanitized text:', sanitizedText.substring(0, 100) + '...');
+
+    if (!sanitizedText || sanitizedText.length < 2) {
+      console.error('❌ [EDGE-TTS] Invalid text - too short');
+      throw new Error('No valid text to synthesize');
+    }
+
+    try {
+      console.log('🌐 [EDGE-TTS] Sending request to Edge TTS API...');
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: sanitizedText,
+          voice: voiceId
+        }),
+      });
+
+      console.log('📡 [EDGE-TTS] API response status:', response.status);
+      console.log('📡 [EDGE-TTS] API response ok:', response.ok);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('❌ [EDGE-TTS] API error response:', errorData);
+        throw new Error(`Edge TTS API error: ${response.status} ${response.statusText}`);
+      }
+
+      const audioBuffer = Buffer.from(await response.arrayBuffer());
+      console.log('✅ [EDGE-TTS] Audio buffer received, size:', audioBuffer.length, 'bytes');
+      
+      // Get duration from response header or estimate
+      const durationHeader = response.headers.get('X-Duration');
+      const duration = durationHeader ? parseFloat(durationHeader) : sanitizedText.length * 0.06;
+      console.log('✅ [EDGE-TTS] Duration:', duration, 'seconds');
+
+      console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
+      return {
+        audioBuffer,
+        duration,
+      };
+    } catch (error) {
+      console.error('❌ [EDGE-TTS] Error:', error);
+      throw error;
+    }
+  }
 }
 
 // -------------------- ELEVEN LABS --------------------
@@ -190,248 +249,16 @@ export class GTTSService implements TTSService {
   }
 }
 
-// -------------------- EDGE TTS --------------------
-export class EdgeTTSService implements TTSService {
-  async synthesize(text: string, voiceId: string = 'en-US-AndrewNeural', speed: number = 1.1): Promise<TTSResult> {
-    console.log('🎙️ [EDGE-TTS] === SYNTHESIZE START ===');
-    console.log('🎙️ [EDGE-TTS] Text length:', text.length);
-    console.log('🎙️ [EDGE-TTS] Voice:', voiceId);
-    console.log('🎙️ [EDGE-TTS] Speed:', speed);
-    
-    const sanitizedText = sanitizeText(text);
-    console.log('🧹 [EDGE-TTS] Sanitized text:', sanitizedText.substring(0, 100) + '...');
-
-    if (!sanitizedText || sanitizedText.length < 2) {
-      console.error('❌ [EDGE-TTS] Invalid text - too short');
-      throw new Error('No valid text to synthesize');
-    }
-
-    try {
-      console.log('🌐 [EDGE-TTS] === SYNTHESIZE START ===');
-      console.log('🌐 [EDGE-TTS] Text length:', sanitizedText.length);
-      console.log('🌐 [EDGE-TTS] Voice:', voiceId);
-      console.log('🌐 [EDGE-TTS] Speed:', speed);
-      console.log('🌐 [EDGE-TTS] Environment:', typeof window === 'undefined' ? 'SERVER' : 'CLIENT');
-      
-      // For server-side usage, we need to use a different approach
-      // Import the edge-tts functionality directly instead of making HTTP calls
-      if (typeof window === 'undefined') {
-        console.log('🌐 [EDGE-TTS] Running on server-side, attempting Edge TTS...');
-        // Server-side: try edge-tts CLI first, fallback to HTTP API, then Google TTS
-        try {
-          const { spawn } = await import('child_process');
-          const { join } = await import('path');
-          const { tmpdir } = await import('os');
-          const { readFileSync, unlinkSync } = await import('fs');
-          
-          const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
-          console.log('🌐 [EDGE-TTS] Server-side: trying CLI directly, temp file:', tempFile);
-          
-          // Use edge-tts CLI to generate audio
-          const edgeTtsProcess = spawn('edge-tts', [
-            '--text', sanitizedText,
-            '--voice', voiceId,
-            '--rate', `+${Math.round((speed - 1) * 100)}%`,
-            '--write-media', tempFile
-          ], {
-            stdio: ['pipe', 'pipe', 'pipe']
-          });
-
-          // Wait for the process to complete
-          await new Promise((resolve, reject) => {
-            edgeTtsProcess.on('close', (code) => {
-              if (code === 0) {
-                resolve(code);
-              } else {
-                reject(new Error(`edge-tts process exited with code ${code}`));
-              }
-            });
-            
-            edgeTtsProcess.on('error', (error) => {
-              reject(error);
-            });
-          });
-
-          // Read the generated audio file
-          const audioBuffer = readFileSync(tempFile);
-          
-          // Clean up temporary file
-          try {
-            unlinkSync(tempFile);
-          } catch (cleanupError) {
-            console.warn('⚠️ [EDGE-TTS] Failed to clean up temp file:', cleanupError);
-          }
-
-          // Estimate duration (rough calculation: ~150 words per minute)
-          const wordCount = sanitizedText.split(' ').length;
-          const estimatedDuration = (wordCount / 150) * 60 / speed;
-          
-          console.log('✅ [EDGE-TTS] Audio generated, size:', audioBuffer.length, 'bytes');
-          console.log('✅ [EDGE-TTS] Estimated duration:', estimatedDuration, 'seconds');
-          console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
-
-          return {
-            audioBuffer: audioBuffer,
-            duration: estimatedDuration,
-          };
-          
-        } catch (cliError) {
-          console.error('❌ [EDGE-TTS] CLI failed:', cliError instanceof Error ? cliError.message : 'Unknown error');
-          console.error('❌ [EDGE-TTS] CLI error details:', {
-            name: cliError instanceof Error ? cliError.name : 'Unknown',
-            message: cliError instanceof Error ? cliError.message : 'Unknown error',
-            stack: cliError instanceof Error ? cliError.stack : 'No stack trace'
-          });
-          console.error('❌ [EDGE-TTS] CLI error code:', (cliError as any)?.code);
-          console.error('❌ [EDGE-TTS] CLI error errno:', (cliError as any)?.errno);
-          console.error('❌ [EDGE-TTS] CLI error syscall:', (cliError as any)?.syscall);
-          
-          // Try Netlify function as second fallback
-          try {
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://heromeet.netlify.app';
-            const functionUrl = `${baseUrl}/.netlify/functions/edge-tts`;
-            
-            console.log('🌐 [EDGE-TTS] Trying Netlify function:', functionUrl);
-            console.log('🌐 [EDGE-TTS] Request payload:', {
-              text: sanitizedText.substring(0, 50) + '...',
-              voice: voiceId,
-              speed: speed
-            });
-            
-            const response = await fetch(functionUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                text: sanitizedText,
-                voice: voiceId,
-                speed: speed
-              }),
-            });
-
-            console.log('🌐 [EDGE-TTS] Netlify function response status:', response.status);
-            console.log('🌐 [EDGE-TTS] Netlify function response headers:', Object.fromEntries(response.headers.entries()));
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('❌ [EDGE-TTS] Netlify function error response:', errorText);
-              throw new Error(`Netlify function failed: ${response.status} - ${errorText}`);
-            }
-
-            const result = await response.json();
-            console.log('🌐 [EDGE-TTS] Netlify function response data:', {
-              success: result.success,
-              duration: result.duration,
-              size: result.size,
-              method: result.method,
-              audioBufferLength: result.audioBuffer ? result.audioBuffer.length : 'undefined'
-            });
-            
-            if (!result.success) {
-              console.error('❌ [EDGE-TTS] Netlify function returned error:', result.error);
-              console.error('❌ [EDGE-TTS] Netlify function fallback info:', result.fallback);
-              throw new Error(result.error || 'Unknown Netlify function error');
-            }
-
-            // Convert base64 back to buffer
-            const finalBuffer = Buffer.from(result.audioBuffer, 'base64');
-            
-            console.log('✅ [EDGE-TTS] Netlify function audio generated, size:', finalBuffer.length, 'bytes');
-            console.log('✅ [EDGE-TTS] Duration:', result.duration, 'seconds');
-            console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
-
-            return {
-              audioBuffer: finalBuffer,
-              duration: result.duration,
-            };
-            
-          } catch (functionError) {
-            console.error('❌ [EDGE-TTS] Netlify function failed:', functionError instanceof Error ? functionError.message : 'Unknown error');
-            console.error('❌ [EDGE-TTS] Function error stack:', functionError instanceof Error ? functionError.stack : 'No stack trace');
-            
-            // Final fallback to Google TTS
-            console.log('🔄 [EDGE-TTS] All Edge TTS methods failed, falling back to Google TTS...');
-            console.log('⚠️ [EDGE-TTS] FALLBACK REASON: Netlify function failed');
-            const gttsService = new GTTSService();
-            const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
-            console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
-            console.log('⚠️ [EDGE-TTS] WARNING: Using Google TTS instead of Edge TTS!');
-            return fallbackResult;
-          }
-        }
-      } else {
-        // Client-side: use real Edge TTS
-        console.log('🌐 [EDGE-TTS] Client-side: using real Edge TTS...');
-        console.log('🌐 [EDGE-TTS] Request payload:', {
-          text: sanitizedText.substring(0, 50) + '...',
-          voice: voiceId,
-          speed: speed
-        });
-        
-        // Import Edge TTS dynamically to avoid SSR issues
-        const { EdgeTTS } = await import('@andresaya/edge-tts');
-        const tts = new EdgeTTS();
-        
-        // Synthesize speech
-        await tts.synthesize(sanitizedText, voiceId);
-        const audioBuffer = tts.toBuffer();
-        
-        // Estimate duration (rough calculation: ~150 words per minute)
-        const wordCount = sanitizedText.split(' ').length;
-        const estimatedDuration = (wordCount / 150) * 60 / speed;
-        
-        console.log('✅ [EDGE-TTS] Real Edge TTS successful, size:', audioBuffer.length, 'bytes');
-        console.log('✅ [EDGE-TTS] Duration:', estimatedDuration, 'seconds');
-        console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
-
-        return {
-          audioBuffer: Buffer.from(audioBuffer),
-          duration: estimatedDuration,
-        };
-      }
-      
-    } catch (error) {
-      console.error('❌ [EDGE-TTS] === SYNTHESIS FAILED ===');
-      console.error('❌ [EDGE-TTS] Error:', error);
-      console.error('❌ [EDGE-TTS] Error type:', typeof error);
-      console.error('❌ [EDGE-TTS] Error details:', {
-        name: error instanceof Error ? error.name : 'Unknown',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : 'No stack trace'
-      });
-      
-      // Final fallback to Google TTS
-      console.log('🔄 [EDGE-TTS] Final fallback to Google TTS...');
-      console.log('⚠️ [EDGE-TTS] FALLBACK REASON: All Edge TTS methods failed');
-      try {
-        const gttsService = new GTTSService();
-        const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
-        console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
-        console.log('⚠️ [EDGE-TTS] WARNING: Using Google TTS instead of Edge TTS!');
-        return fallbackResult;
-      } catch (fallbackError) {
-        console.error('❌ [EDGE-TTS] Google TTS fallback also failed:', fallbackError);
-        throw new Error(`Edge TTS synthesis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-  }
-}
-
 // -------------------- FACTORY --------------------
-export function createTTSService(provider: TTSProvider = 'edgetts'): TTSService {
-  console.log(`🎵 [TTS-FACTORY] Creating TTS service for provider: ${provider}`);
-  
+export function createTTSService(provider: TTSProvider = 'edge'): TTSService {
   switch (provider) {
-    case 'gtts':
-      console.log(`🎵 [TTS-FACTORY] Creating Google TTS service`);
-      return new GTTSService();
-    case 'edgetts':
-      console.log(`🎵 [TTS-FACTORY] Creating Edge TTS service`);
+    case 'edge':
       return new EdgeTTSService();
+    case 'gtts':
+      return new GTTSService();
     case 'elevenlabs':
-    default:
-      console.log(`🎵 [TTS-FACTORY] Creating ElevenLabs TTS service`);
       return new ElevenLabsTTSService();
+    default:
+      return new EdgeTTSService();
   }
 }

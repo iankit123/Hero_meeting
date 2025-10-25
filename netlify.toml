@@ -1,19 +1,18 @@
 [build]
-  command = "pip install -r requirements.txt && npm run build:next"
-  publish = ".next"
+  command = "npm run build"
+  functions = "netlify/functions"
 
-[build.environment]
-  NODE_VERSION = "18"
-  PYTHON_VERSION = "3.9"
-  PIP_CACHE_DIR = "/opt/buildhome/.cache/pip"
-
-# Functions configuration for serverless functions
 [functions]
-  directory = "netlify/functions"
   node_bundler = "esbuild"
 
-# Redirects for Next.js
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+[build.environment]
+  PYTHON_VERSION = "3.9"
+  NODE_VERSION = "18"
+
+[[plugins]]
+  package = "@netlify/plugin-python"
+
+[dev]
+  command = "npm run dev"
+  port = 3003
+  publish = ".next"

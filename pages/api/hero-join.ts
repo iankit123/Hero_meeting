@@ -60,21 +60,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const llmService = createLLMService();
       
       // Use TTS provider from request or fallback to environment variable
-      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' | 'edgetts' || 'edgetts';
+      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
       const ttsService = createTTSService(selectedTtsProvider);
       
       console.log(`🎵 [TTS] Selected TTS Provider: ${selectedTtsProvider}`);
       console.log(`🎵 [TTS] TTS Service created for: ${selectedTtsProvider}`);
-      console.log(`🎵 [TTS] TTS Service type:`, typeof ttsService);
-      console.log(`🎵 [TTS] TTS Service constructor:`, ttsService.constructor.name);
-      console.log(`🎵 [TTS] TTS Service methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(ttsService)));
-      console.log(`🎵 [TTS] TTS Service has synthesize method:`, typeof ttsService.synthesize === 'function');
-      console.log(`🎵 [TTS] === TTS SERVICE DETAILS ===`);
-      console.log(`🎵 [TTS] Requested provider: ${ttsProvider}`);
-      console.log(`🎵 [TTS] Environment provider: ${process.env.TTS_PROVIDER}`);
-      console.log(`🎵 [TTS] Final selected provider: ${selectedTtsProvider}`);
-      console.log(`🎵 [TTS] Service class name: ${ttsService.constructor.name}`);
-      console.log(`🎵 [TTS] === END TTS SERVICE DETAILS ===`);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
@@ -207,26 +197,9 @@ Question: ${finalQuestion}`;
 
       // Generate TTS audio with fallback
       let ttsResult;
-      console.log(`🎵 [TTS] === SYNTHESIS START ===`);
-      console.log(`🎵 [TTS] Provider: ${selectedTtsProvider}`);
-      console.log(`🎵 [TTS] Text length: ${cleanTextForTTS.length}`);
-      console.log(`🎵 [TTS] Text preview: ${cleanTextForTTS.substring(0, 100)}...`);
-      
       try {
-        console.log(`🎵 [TTS] Calling ttsService.synthesize()...`);
-        console.log(`🎵 [TTS] Service type: ${ttsService.constructor.name}`);
-        console.log(`🎵 [TTS] Text length: ${cleanTextForTTS.length}`);
-        console.log(`🎵 [TTS] Text preview: ${cleanTextForTTS.substring(0, 100)}...`);
-        
-        const startTime = Date.now();
         ttsResult = await ttsService.synthesize(cleanTextForTTS);
-        const endTime = Date.now();
-        
         console.log('✅ [TTS] Successfully generated audio');
-        console.log(`🎵 [TTS] Synthesis took: ${endTime - startTime}ms`);
-        console.log(`🎵 [TTS] Audio buffer size: ${ttsResult.audioBuffer.length} bytes`);
-        console.log(`🎵 [TTS] Audio duration: ${ttsResult.duration} seconds`);
-        console.log(`🎵 [TTS] Service used: ${ttsService.constructor.name}`);
       } catch (ttsError) {
         console.error('❌ [TTS] Initial TTS failed:', ttsError);
         
@@ -254,8 +227,6 @@ Question: ${finalQuestion}`;
         response: llmResponse.text,
         audioBuffer: ttsResult.audioBuffer.toString('base64'),
         duration: ttsResult.duration,
-        ttsProvider: selectedTtsProvider,
-        ttsServiceUsed: ttsService.constructor.name,
       });
 
     } else {
