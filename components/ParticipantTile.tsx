@@ -255,15 +255,28 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
         playsInline
         muted={isLocal}
         className="participant-video"
-        style={{ display: hasVideo ? 'block' : 'none' }}
+        style={{ 
+          display: hasVideo ? 'block' : 'none'
+        }}
       />
       
       {/* Show placeholder only when no video */}
       {!hasVideo && (
         <div className="participant-placeholder">
-          <div className="avatar">
-            {formatName(participant.name, participant.identity).charAt(0).toUpperCase()}
+          <div className="full-name-display">
+            {formatName(participant.name, participant.identity)}
+            {isLocal && ' (You)'}
           </div>
+          <div className="camera-off-indicator">
+            📹 Camera Off
+          </div>
+        </div>
+      )}
+      
+      {/* Screen sharing indicator */}
+      {hasVideo && participant.trackPublications.has('screen') && (
+        <div className="screen-share-indicator">
+          🖥️ Screen Sharing
         </div>
       )}
       
@@ -303,24 +316,36 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
           width: 100%;
           height: 100%;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+          background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+          position: relative;
         }
 
-        .avatar {
-          width: 80px;
-          height: 80px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
+        .full-name-display {
           font-size: 32px;
-          font-weight: bold;
-          color: white;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+          font-weight: 700;
+          color: #1e293b;
+          text-align: center;
+          margin-bottom: 16px;
+          text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+          letter-spacing: 0.5px;
         }
+
+        .camera-off-indicator {
+          position: absolute;
+          top: 16px;
+          right: 16px;
+          background: rgba(239, 68, 68, 0.9);
+          color: white;
+          padding: 6px 12px;
+          border-radius: 16px;
+          font-size: 12px;
+          font-weight: 600;
+          backdrop-filter: blur(8px);
+        }
+
 
         .participant-name {
           position: absolute;

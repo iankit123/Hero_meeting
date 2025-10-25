@@ -7,3 +7,5 @@
    - Environments: .env.local
 
  ✓ Ready in 1536ms
+ ○ Compiling /_error ...
+ ✓ Compiled /_error in 938ms (199 modules)

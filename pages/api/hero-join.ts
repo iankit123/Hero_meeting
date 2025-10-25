@@ -159,8 +159,7 @@ Answer as Hero based strictly on the meeting context.`;
 
 RULES (GENERAL KNOWLEDGE MODE):
 - Provide a direct, accurate answer using general knowledge.
-- Be concise and practical; use a short paragraph or bullets.
-- If useful, add 1-2 clarifying facts.
+- Be very concise like 1 sentence for generic/general knowledge questions, like if asked what is the capital of India, just say "The capital of India is New Delhi. Anything I can help you with meeting related questions?".
 - Do NOT reference internal meetings unless explicitly asked.
 
 Question: ${finalQuestion}`;
