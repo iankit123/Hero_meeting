@@ -1,11 +1,7 @@
-import { Handler } from '@netlify/functions';
-import { spawn } from 'child_process';
-import { promisify } from 'util';
-
-const pipelineAsync = promisify(require('stream').pipeline);
+const { spawn } = require('child_process');
 
 // Python-based Edge TTS implementation for Netlify
-async function generateAudioWithPython(text: string, voice: string, speed: number): Promise<Buffer> {
+async function generateAudioWithPython(text, voice, speed) {
   console.log('🐍 [NETLIFY-EDGE-TTS] Using Python-based Edge TTS...');
   
   // Escape text for Python script
@@ -104,7 +100,7 @@ asyncio.run(synthesize())
   });
 }
 
-export const handler: Handler = async (event, context) => {
+exports.handler = async (event, context) => {
   console.log('🎙️ [NETLIFY-EDGE-TTS] === REQUEST RECEIVED ===');
   console.log('🎙️ [NETLIFY-EDGE-TTS] Method:', event.httpMethod);
   

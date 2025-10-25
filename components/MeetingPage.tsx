@@ -456,14 +456,16 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       }
       // Clean up all hero query accumulator timeouts
       const currentAccumulators = heroQueryAccumulators.current;
-      currentAccumulators.forEach((accumulator, participantId) => {
-        if (accumulator.timeout) {
-          clearTimeout(accumulator.timeout);
-        }
-      });
-      currentAccumulators.clear();
+      if (currentAccumulators) {
+        currentAccumulators.forEach((accumulator, participantId) => {
+          if (accumulator.timeout) {
+            clearTimeout(accumulator.timeout);
+          }
+        });
+        currentAccumulators.clear();
+      }
     };
-  }, [roomName, participantName]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [roomName, participantName]);
 
   // Initialize audio context on first user interaction
   useEffect(() => {
