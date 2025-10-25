@@ -211,8 +211,9 @@ export class EdgeTTSService implements TTSService {
       
       // Prefer server-side synthesis using edge-tts-universal
       if (typeof window === 'undefined') {
-        const { EdgeTTS } = await import('edge-tts-universal');
-        const tts = new EdgeTTS(sanitizedText, voiceId);
+        const edgeTTSModule = await import('edge-tts-universal');
+        const UniversalEdgeTTS = (edgeTTSModule as any).UniversalEdgeTTS;
+        const tts = new UniversalEdgeTTS(sanitizedText, voiceId);
         const synthResult: any = await tts.synthesize();
         
         // synthResult.audio is a Blob; convert to Buffer

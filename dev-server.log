@@ -2,9 +2,6 @@
 > hero-meet@0.1.0 dev
 > next dev
 
-<<<<<<< HEAD
-sh: next: command not found
-=======
    ▲ Next.js 14.0.4
    - Local:        http://localhost:3000
    - Environments: .env.local
@@ -12,4 +9,3 @@ sh: next: command not found
  ✓ Ready in 1536ms
  ○ Compiling /_error ...
  ✓ Compiled /_error in 938ms (199 modules)
->>>>>>> 0e5bbfa (some changes)
