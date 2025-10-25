@@ -354,59 +354,33 @@ export class EdgeTTSService implements TTSService {
           }
         }
       } else {
-        // Client-side: use Netlify function
-        console.log('🌐 [EDGE-TTS] Client-side: using Netlify function...');
-        console.log('🌐 [EDGE-TTS] Function URL: /.netlify/functions/edge-tts');
+        // Client-side: use real Edge TTS
+        console.log('🌐 [EDGE-TTS] Client-side: using real Edge TTS...');
         console.log('🌐 [EDGE-TTS] Request payload:', {
           text: sanitizedText.substring(0, 50) + '...',
           voice: voiceId,
           speed: speed
         });
         
-        const response = await fetch('/.netlify/functions/edge-tts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            text: sanitizedText,
-            voice: voiceId,
-            speed: speed
-          }),
-        });
-
-        console.log('🌐 [EDGE-TTS] Netlify function response status:', response.status);
-        console.log('🌐 [EDGE-TTS] Netlify function response headers:', Object.fromEntries(response.headers.entries()));
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error('❌ [EDGE-TTS] Netlify function error response:', errorText);
-          throw new Error(`Netlify function failed: ${response.status} - ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log('🌐 [EDGE-TTS] Netlify function response data:', {
-          success: result.success,
-          duration: result.duration,
-          size: result.size,
-          audioBufferLength: result.audioBuffer ? result.audioBuffer.length : 'undefined'
-        });
+        // Import Edge TTS dynamically to avoid SSR issues
+        const { EdgeTTS } = await import('@andresaya/edge-tts');
+        const tts = new EdgeTTS();
         
-        if (!result.success) {
-          console.error('❌ [EDGE-TTS] Netlify function returned error:', result.error);
-          throw new Error(result.error || 'Unknown Netlify function error');
-        }
-
-        // Convert base64 back to buffer
-        const finalBuffer = Buffer.from(result.audioBuffer, 'base64');
+        // Synthesize speech
+        await tts.synthesize(sanitizedText, voiceId);
+        const audioBuffer = tts.toBuffer();
         
-        console.log('✅ [EDGE-TTS] Audio generated, size:', finalBuffer.length, 'bytes');
-        console.log('✅ [EDGE-TTS] Duration:', result.duration, 'seconds');
+        // Estimate duration (rough calculation: ~150 words per minute)
+        const wordCount = sanitizedText.split(' ').length;
+        const estimatedDuration = (wordCount / 150) * 60 / speed;
+        
+        console.log('✅ [EDGE-TTS] Real Edge TTS successful, size:', audioBuffer.length, 'bytes');
+        console.log('✅ [EDGE-TTS] Duration:', estimatedDuration, 'seconds');
         console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
 
         return {
-          audioBuffer: finalBuffer,
-          duration: result.duration,
+          audioBuffer: Buffer.from(audioBuffer),
+          duration: estimatedDuration,
         };
       }
       
@@ -436,7 +410,7 @@ export class EdgeTTSService implements TTSService {
 }
 
 // -------------------- FACTORY --------------------
-export function createTTSService(provider: TTSProvider = 'gtts'): TTSService {
+export function createTTSService(provider: TTSProvider = 'edgetts'): TTSService {
   console.log(`🎵 [TTS-FACTORY] Creating TTS service for provider: ${provider}`);
   
   switch (provider) {

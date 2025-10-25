@@ -13,6 +13,7 @@
     "postinstall": "pip install edge-tts || echo 'Edge TTS installation failed, will use fallback'"
   },
   "dependencies": {
+    "@andresaya/edge-tts": "^1.4.4",
     "@google/generative-ai": "^0.2.1",
     "@huggingface/inference": "^4.11.1",
     "@supabase/supabase-js": "^2.75.0",
