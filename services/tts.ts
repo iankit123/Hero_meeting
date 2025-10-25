@@ -282,6 +282,9 @@ export class EdgeTTSService implements TTSService {
             message: cliError instanceof Error ? cliError.message : 'Unknown error',
             stack: cliError instanceof Error ? cliError.stack : 'No stack trace'
           });
+          console.error('❌ [EDGE-TTS] CLI error code:', (cliError as any)?.code);
+          console.error('❌ [EDGE-TTS] CLI error errno:', (cliError as any)?.errno);
+          console.error('❌ [EDGE-TTS] CLI error syscall:', (cliError as any)?.syscall);
           
           // Try Netlify function as second fallback
           try {
@@ -347,9 +350,11 @@ export class EdgeTTSService implements TTSService {
             
             // Final fallback to Google TTS
             console.log('🔄 [EDGE-TTS] All Edge TTS methods failed, falling back to Google TTS...');
+            console.log('⚠️ [EDGE-TTS] FALLBACK REASON: Netlify function failed');
             const gttsService = new GTTSService();
             const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
             console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
+            console.log('⚠️ [EDGE-TTS] WARNING: Using Google TTS instead of Edge TTS!');
             return fallbackResult;
           }
         }
@@ -396,10 +401,12 @@ export class EdgeTTSService implements TTSService {
       
       // Final fallback to Google TTS
       console.log('🔄 [EDGE-TTS] Final fallback to Google TTS...');
+      console.log('⚠️ [EDGE-TTS] FALLBACK REASON: All Edge TTS methods failed');
       try {
         const gttsService = new GTTSService();
         const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
         console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
+        console.log('⚠️ [EDGE-TTS] WARNING: Using Google TTS instead of Edge TTS!');
         return fallbackResult;
       } catch (fallbackError) {
         console.error('❌ [EDGE-TTS] Google TTS fallback also failed:', fallbackError);
