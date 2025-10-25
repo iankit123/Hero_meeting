@@ -436,7 +436,7 @@ export class EdgeTTSService implements TTSService {
 }
 
 // -------------------- FACTORY --------------------
-export function createTTSService(provider: TTSProvider = 'edgetts'): TTSService {
+export function createTTSService(provider: TTSProvider = 'gtts'): TTSService {
   console.log(`🎵 [TTS-FACTORY] Creating TTS service for provider: ${provider}`);
   
   switch (provider) {

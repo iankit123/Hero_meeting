@@ -49,7 +49,7 @@ asyncio.run(synthesize())
   return new Promise((resolve, reject) => {
     console.log('🐍 [NETLIFY-EDGE-TTS] Spawning Python process...');
     
-    const pythonProcess = spawn('python3', ['-c', pythonScript], {
+    const pythonProcess = spawn('python', ['-c', pythonScript], {
       stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 30000,
       env: { ...process.env, PYTHONPATH: '/opt/buildhome/.cache/pip' }
