@@ -212,7 +212,7 @@ export class EdgeTTSService implements TTSService {
       // For server-side usage, we need to use a different approach
       // Import the edge-tts functionality directly instead of making HTTP calls
       if (typeof window === 'undefined') {
-        // Server-side: try edge-tts CLI first, fallback to Google TTS if not available
+        // Server-side: try edge-tts CLI first, fallback to serverless function, then Google TTS
         try {
           const { spawn } = await import('child_process');
           const { join } = await import('path');
@@ -271,12 +271,57 @@ export class EdgeTTSService implements TTSService {
           };
           
         } catch (cliError) {
-          console.warn('⚠️ [EDGE-TTS] CLI not available, falling back to Google TTS:', cliError instanceof Error ? cliError.message : 'Unknown error');
+          console.warn('⚠️ [EDGE-TTS] CLI not available, trying serverless function:', cliError instanceof Error ? cliError.message : 'Unknown error');
           
-          // Fallback to Google TTS when Edge TTS CLI is not available (e.g., on Netlify)
-          const gttsService = new GTTSService();
-          console.log('🔄 [EDGE-TTS] Using Google TTS fallback...');
-          return await gttsService.synthesize(sanitizedText, undefined, speed);
+          // Try serverless function as second fallback
+          try {
+            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://heromeet.netlify.app';
+            const serverlessUrl = `${baseUrl}/.netlify/functions/edge-tts-serverless`;
+            
+            console.log('🌐 [EDGE-TTS] Trying serverless function:', serverlessUrl);
+            
+            const response = await fetch(serverlessUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                text: sanitizedText,
+                voice: voiceId,
+                speed: speed
+              }),
+            });
+
+            if (!response.ok) {
+              throw new Error(`Serverless function failed: ${response.status}`);
+            }
+
+            const result = await response.json();
+            
+            if (!result.success) {
+              throw new Error(result.error || 'Unknown serverless error');
+            }
+
+            // Convert base64 back to buffer
+            const finalBuffer = Buffer.from(result.audioBuffer, 'base64');
+            
+            console.log('✅ [EDGE-TTS] Serverless audio generated, size:', finalBuffer.length, 'bytes');
+            console.log('✅ [EDGE-TTS] Duration:', result.duration, 'seconds');
+            console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
+
+            return {
+              audioBuffer: finalBuffer,
+              duration: result.duration,
+            };
+            
+          } catch (serverlessError) {
+            console.warn('⚠️ [EDGE-TTS] Serverless function failed, falling back to Google TTS:', serverlessError instanceof Error ? serverlessError.message : 'Unknown error');
+            
+            // Final fallback to Google TTS
+            const gttsService = new GTTSService();
+            console.log('🔄 [EDGE-TTS] Using Google TTS fallback...');
+            return await gttsService.synthesize(sanitizedText, undefined, speed);
+          }
         }
       } else {
         // Client-side: use HTTP API

@@ -13,6 +13,7 @@
 # Functions configuration for serverless functions
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 # Redirects for Next.js
 [[redirects]]
