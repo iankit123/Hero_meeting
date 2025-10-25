@@ -32,7 +32,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
-  const [ttsProvider, setTtsProvider] = useState<'edge' | 'elevenlabs' | 'gtts'>('gtts');
+  const [ttsProvider, setTtsProvider] = useState<'edge' | 'elevenlabs' | 'gtts'>('edge');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -79,7 +79,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const roomRef = useRef<Room | null>(null);
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
-  const ttsProviderRef = useRef<'edge' | 'elevenlabs' | 'gtts'>('gtts');
+  const ttsProviderRef = useRef<'edge' | 'elevenlabs' | 'gtts'>('edge');
   const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
   
   // Hero query accumulation - per participant using Map
@@ -2342,7 +2342,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
   // Wrapper for UI-triggered TTS provider toggle
   const toggleTTSProvider = async (newProvider?: 'edge' | 'elevenlabs' | 'gtts') => {
-    const targetProvider = newProvider || (ttsProvider === 'gtts' ? 'elevenlabs' : ttsProvider === 'elevenlabs' ? 'edge' : 'gtts');
+    const targetProvider = newProvider || (ttsProvider === 'edge' ? 'elevenlabs' : ttsProvider === 'elevenlabs' ? 'gtts' : 'edge');
     await handleTtsProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
@@ -3086,8 +3086,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="gtts">Google TTS</option>
               <option value="edge">Edge TTS</option>
+              <option value="gtts">Google TTS</option>
               <option value="elevenlabs">ElevenLabs</option>
             </select>
           </div>

@@ -12,6 +12,7 @@
     "install-python-deps": "pip3 install -r requirements.txt"
   },
   "dependencies": {
+    "@andresaya/edge-tts": "^1.4.4",
     "@google/generative-ai": "^0.2.1",
     "@huggingface/inference": "^4.11.1",
     "@supabase/supabase-js": "^2.75.0",
