@@ -168,7 +168,7 @@ const FeedbackTab: React.FC<FeedbackTabProps> = ({ orgName }) => {
           color: '#6b7280',
           margin: '0 0 24px 0'
         }}>
-          Collect and manage feedback for {orgName}
+          Provide feedback to improve the platform for {orgName}
         </p>
         
         {/* Big Bold Add Feedback Button */}
