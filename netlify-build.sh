@@ -33,8 +33,19 @@ fi
 
 # Install Edge TTS
 echo "📦 Installing Edge TTS..."
-if $PIP_CMD install -r requirements.txt; then
+if $PIP_CMD install edge-tts; then
     echo "✅ Edge TTS installed successfully"
+    
+    # Verify installation
+    if command -v edge-tts &>/dev/null; then
+        echo "✅ Edge TTS CLI is available"
+        echo "🎙️ Available voices (sample):"
+        edge-tts --list-voices | head -5
+    else
+        echo "⚠️ Edge TTS CLI not found in PATH"
+        echo "🔍 Checking Python path..."
+        $PYTHON_CMD -c "import edge_tts; print('Edge TTS module available')" 2>/dev/null || echo "❌ Edge TTS module not available"
+    fi
 else
     echo "⚠️ Edge TTS installation failed, will use Google TTS fallback"
 fi
