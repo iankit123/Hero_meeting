@@ -207,65 +207,28 @@ export class EdgeTTSService implements TTSService {
     }
 
     try {
-      console.log('🌐 [EDGE-TTS] Generating audio via API...');
+      console.log('🌐 [EDGE-TTS] Generating audio via library...');
       
-      // For server-side usage, we need to use a different approach
-      // Import the edge-tts functionality directly instead of making HTTP calls
+      // Prefer server-side synthesis using edge-tts-universal
       if (typeof window === 'undefined') {
-        // Server-side: use edge-tts CLI directly
-        const { spawn } = await import('child_process');
-        const { join } = await import('path');
-        const { tmpdir } = await import('os');
-        const { readFileSync, unlinkSync } = await import('fs');
+        const { EdgeTTS } = await import('edge-tts-universal');
+        const tts = new EdgeTTS(sanitizedText, voiceId);
+        const synthResult: any = await tts.synthesize();
         
-        const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
-        console.log('🌐 [EDGE-TTS] Server-side: using CLI directly, temp file:', tempFile);
-        
-        // Use edge-tts CLI to generate audio
-        const edgeTtsProcess = spawn('edge-tts', [
-          '--text', sanitizedText,
-          '--voice', voiceId,
-          '--rate', `+${Math.round((speed - 1) * 100)}%`,
-          '--write-media', tempFile
-        ], {
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
+        // synthResult.audio is a Blob; convert to Buffer
+        const arrayBuffer = await synthResult.audio.arrayBuffer();
+        const audioBuffer = Buffer.from(arrayBuffer);
 
-        // Wait for the process to complete
-        await new Promise((resolve, reject) => {
-          edgeTtsProcess.on('close', (code) => {
-            if (code === 0) {
-              resolve(code);
-            } else {
-              reject(new Error(`edge-tts process exited with code ${code}`));
-            }
-          });
-          
-          edgeTtsProcess.on('error', (error) => {
-            reject(error);
-          });
-        });
-
-        // Read the generated audio file
-        const audioBuffer = readFileSync(tempFile);
-        
-        // Clean up temporary file
-        try {
-          unlinkSync(tempFile);
-        } catch (cleanupError) {
-          console.warn('⚠️ [EDGE-TTS] Failed to clean up temp file:', cleanupError);
-        }
-
-        // Estimate duration (rough calculation: ~150 words per minute)
+        // Estimate duration (rough calculation: ~150 words per minute, adjusted by speed)
         const wordCount = sanitizedText.split(' ').length;
-        const estimatedDuration = (wordCount / 150) * 60 / speed;
-        
+        const estimatedDuration = (wordCount / 150) * 60 / (speed || 1);
+
         console.log('✅ [EDGE-TTS] Audio generated, size:', audioBuffer.length, 'bytes');
         console.log('✅ [EDGE-TTS] Estimated duration:', estimatedDuration, 'seconds');
         console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
 
         return {
-          audioBuffer: audioBuffer,
+          audioBuffer,
           duration: estimatedDuration,
         };
       } else {

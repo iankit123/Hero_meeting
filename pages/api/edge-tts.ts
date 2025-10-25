@@ -1,12 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { spawn } from 'child_process';
-import { promisify } from 'util';
-import { pipeline } from 'stream';
-import { createWriteStream, unlinkSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
-
-const pipelineAsync = promisify(pipeline);
+import { unlinkSync } from 'fs';
+import { EdgeTTS } from 'edge-tts-universal';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -40,59 +34,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'No valid text to synthesize' });
     }
 
-    // Create temporary file for output
-    const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
-    
-    console.log('🌐 [EDGE-TTS-API] Generating audio using edge-tts CLI...');
-    console.log('🌐 [EDGE-TTS-API] Temp file:', tempFile);
-
-    // Use edge-tts CLI to generate audio
-    const edgeTtsProcess = spawn('edge-tts', [
-      '--text', sanitizedText,
-      '--voice', voice,
-      '--rate', `+${Math.round((speed - 1) * 100)}%`,
-      '--write-media', tempFile
-    ], {
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    // Capture stderr for debugging
-    let stderr = '';
-    edgeTtsProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    // Wait for the process to complete
-    await new Promise((resolve, reject) => {
-      edgeTtsProcess.on('close', (code) => {
-        console.log('🔍 [EDGE-TTS-API] Process exit code:', code);
-        if (stderr) {
-          console.log('🔍 [EDGE-TTS-API] Stderr:', stderr);
-        }
-        if (code === 0) {
-          resolve(code);
-        } else {
-          reject(new Error(`edge-tts process exited with code ${code}. Stderr: ${stderr}`));
-        }
-      });
-      
-      edgeTtsProcess.on('error', (error) => {
-        console.error('🔍 [EDGE-TTS-API] Process error:', error);
-        reject(error);
-      });
-    });
-
-    // Read the generated audio file
-    const fs = await import('fs');
-    const audioBuffer = fs.readFileSync(tempFile);
-    
-    // Clean up temporary file
-    try {
-      unlinkSync(tempFile);
-      console.log('🧹 [EDGE-TTS-API] Temp file cleaned up');
-    } catch (cleanupError) {
-      console.warn('⚠️ [EDGE-TTS-API] Failed to clean up temp file:', cleanupError);
-    }
+    console.log('🌐 [EDGE-TTS-API] Generating audio using edge-tts-universal...');
+    const tts = new EdgeTTS(sanitizedText, voice);
+    const result: any = await tts.synthesize();
+    const arrayBuffer = await result.audio.arrayBuffer();
+    const audioBuffer = Buffer.from(arrayBuffer);
 
     // Estimate duration (rough calculation: ~150 words per minute)
     const wordCount = sanitizedText.split(' ').length;
@@ -112,14 +58,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   } catch (error) {
     console.error('❌ [EDGE-TTS-API] Error:', error);
-    
-    // Clean up temp file on error
-    try {
-      const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
-      unlinkSync(tempFile);
-    } catch (cleanupError) {
-      // Ignore cleanup errors
-    }
     
     res.status(500).json({ 
       error: `Edge TTS synthesis failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
