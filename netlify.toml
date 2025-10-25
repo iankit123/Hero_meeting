@@ -6,11 +6,7 @@
   node_bundler = "esbuild"
 
 [build.environment]
-  PYTHON_VERSION = "3.9"
   NODE_VERSION = "18"
-
-[[plugins]]
-  package = "@netlify/plugin-python"
 
 [dev]
   command = "npm run dev"

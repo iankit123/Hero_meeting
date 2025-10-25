@@ -20,6 +20,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   console.log('🎙️ [EDGE-TTS] Voice:', voice);
 
   try {
+    // Check if Python and edge-tts are available
+    const pythonCheck = await checkPythonAvailability();
+    if (!pythonCheck.available) {
+      console.warn('⚠️ [EDGE-TTS] Python/edge-tts not available:', pythonCheck.error);
+      return res.status(503).json({ 
+        error: 'Edge TTS not available in this environment',
+        fallback: 'Please use Google TTS or ElevenLabs instead'
+      });
+    }
+
     // Create temporary file path
     const tempDir = os.tmpdir();
     const outputPath = path.join(tempDir, `edge-tts-${Date.now()}.mp3`);
@@ -137,7 +147,46 @@ if __name__ == "__main__":
     console.error('❌ [EDGE-TTS] Error:', error);
     res.status(500).json({ 
       error: 'Edge TTS generation failed', 
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
+      fallback: 'Please use Google TTS or ElevenLabs instead'
     });
   }
+}
+
+// Helper function to check Python availability
+async function checkPythonAvailability(): Promise<{ available: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const pythonProcess = spawn('python3', ['-c', 'import edge_tts; print("edge-tts available")'], {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    pythonProcess.on('close', (code) => {
+      if (code === 0 && stdout.includes('edge-tts available')) {
+        resolve({ available: true });
+      } else {
+        resolve({ 
+          available: false, 
+          error: `Python/edge-tts check failed with code ${code}: ${stderr || stdout}` 
+        });
+      }
+    });
+
+    pythonProcess.on('error', (error) => {
+      resolve({ 
+        available: false, 
+        error: `Python process error: ${error.message}` 
+      });
+    });
+  });
 }

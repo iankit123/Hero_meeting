@@ -57,6 +57,15 @@ export class EdgeTTSService implements TTSService {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('❌ [EDGE-TTS] API error response:', errorData);
+        
+        // If Edge TTS is not available (503), suggest fallback
+        if (response.status === 503) {
+          console.warn('⚠️ [EDGE-TTS] Edge TTS not available, falling back to Google TTS');
+          // Fallback to Google TTS
+          const gttsService = new GTTSService();
+          return gttsService.synthesize(sanitizedText, voiceId);
+        }
+        
         throw new Error(`Edge TTS API error: ${response.status} ${response.statusText}`);
       }
 
@@ -250,7 +259,7 @@ export class GTTSService implements TTSService {
 }
 
 // -------------------- FACTORY --------------------
-export function createTTSService(provider: TTSProvider = 'edge'): TTSService {
+export function createTTSService(provider: TTSProvider = 'gtts'): TTSService {
   switch (provider) {
     case 'edge':
       return new EdgeTTSService();
@@ -259,6 +268,6 @@ export function createTTSService(provider: TTSProvider = 'edge'): TTSService {
     case 'elevenlabs':
       return new ElevenLabsTTSService();
     default:
-      return new EdgeTTSService();
+      return new GTTSService();
   }
 }

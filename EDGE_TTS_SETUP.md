@@ -1,7 +1,7 @@
 # Edge TTS Integration
 
 ## Overview
-Edge TTS is now the **primary TTS provider** for Hero Meeting, providing high-quality, free text-to-speech using Microsoft's Edge TTS service.
+Edge TTS is available as a **local development TTS provider** for Hero Meeting, providing high-quality, free text-to-speech using Microsoft's Edge TTS service. For production deployment, Google TTS is the primary provider.
 
 ## Features
 - ✅ **Free** - No API keys or credits required
@@ -37,8 +37,9 @@ Popular English voices:
 ### 4. Usage in Meeting
 1. Join a meeting
 2. Go to TTS Settings in the sidebar
-3. Select "Edge TTS" from the dropdown
+3. Select "Edge TTS" from the dropdown (available locally)
 4. Start speaking - Hero will respond with Edge TTS
+5. **Note**: Edge TTS automatically falls back to Google TTS on Netlify deployment
 
 ## Technical Implementation
 
@@ -51,12 +52,12 @@ Popular English voices:
 ### Service Integration
 - **File**: `services/tts.ts`
 - **Class**: `EdgeTTSService`
-- **Default Provider**: Edge TTS is now the primary option
+- **Default Provider**: Google TTS (production), Edge TTS (local development)
 
 ### Deployment
-- **Netlify**: Configured with Python 3.9 support
-- **Dependencies**: Listed in `requirements.txt`
-- **Build**: Automatic Python dependency installation
+- **Netlify**: No Python support - Edge TTS falls back to Google TTS
+- **Local Development**: Full Edge TTS support with Python
+- **Dependencies**: Listed in `requirements.txt` for local use
 
 ## Troubleshooting
 
