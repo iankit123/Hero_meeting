@@ -212,62 +212,72 @@ export class EdgeTTSService implements TTSService {
       // For server-side usage, we need to use a different approach
       // Import the edge-tts functionality directly instead of making HTTP calls
       if (typeof window === 'undefined') {
-        // Server-side: use edge-tts CLI directly
-        const { spawn } = await import('child_process');
-        const { join } = await import('path');
-        const { tmpdir } = await import('os');
-        const { readFileSync, unlinkSync } = await import('fs');
-        
-        const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
-        console.log('🌐 [EDGE-TTS] Server-side: using CLI directly, temp file:', tempFile);
-        
-        // Use edge-tts CLI to generate audio
-        const edgeTtsProcess = spawn('edge-tts', [
-          '--text', sanitizedText,
-          '--voice', voiceId,
-          '--rate', `+${Math.round((speed - 1) * 100)}%`,
-          '--write-media', tempFile
-        ], {
-          stdio: ['pipe', 'pipe', 'pipe']
-        });
-
-        // Wait for the process to complete
-        await new Promise((resolve, reject) => {
-          edgeTtsProcess.on('close', (code) => {
-            if (code === 0) {
-              resolve(code);
-            } else {
-              reject(new Error(`edge-tts process exited with code ${code}`));
-            }
-          });
-          
-          edgeTtsProcess.on('error', (error) => {
-            reject(error);
-          });
-        });
-
-        // Read the generated audio file
-        const audioBuffer = readFileSync(tempFile);
-        
-        // Clean up temporary file
+        // Server-side: try edge-tts CLI first, fallback to Google TTS if not available
         try {
-          unlinkSync(tempFile);
-        } catch (cleanupError) {
-          console.warn('⚠️ [EDGE-TTS] Failed to clean up temp file:', cleanupError);
+          const { spawn } = await import('child_process');
+          const { join } = await import('path');
+          const { tmpdir } = await import('os');
+          const { readFileSync, unlinkSync } = await import('fs');
+          
+          const tempFile = join(tmpdir(), `edge-tts-${Date.now()}.wav`);
+          console.log('🌐 [EDGE-TTS] Server-side: trying CLI directly, temp file:', tempFile);
+          
+          // Use edge-tts CLI to generate audio
+          const edgeTtsProcess = spawn('edge-tts', [
+            '--text', sanitizedText,
+            '--voice', voiceId,
+            '--rate', `+${Math.round((speed - 1) * 100)}%`,
+            '--write-media', tempFile
+          ], {
+            stdio: ['pipe', 'pipe', 'pipe']
+          });
+
+          // Wait for the process to complete
+          await new Promise((resolve, reject) => {
+            edgeTtsProcess.on('close', (code) => {
+              if (code === 0) {
+                resolve(code);
+              } else {
+                reject(new Error(`edge-tts process exited with code ${code}`));
+              }
+            });
+            
+            edgeTtsProcess.on('error', (error) => {
+              reject(error);
+            });
+          });
+
+          // Read the generated audio file
+          const audioBuffer = readFileSync(tempFile);
+          
+          // Clean up temporary file
+          try {
+            unlinkSync(tempFile);
+          } catch (cleanupError) {
+            console.warn('⚠️ [EDGE-TTS] Failed to clean up temp file:', cleanupError);
+          }
+
+          // Estimate duration (rough calculation: ~150 words per minute)
+          const wordCount = sanitizedText.split(' ').length;
+          const estimatedDuration = (wordCount / 150) * 60 / speed;
+          
+          console.log('✅ [EDGE-TTS] Audio generated, size:', audioBuffer.length, 'bytes');
+          console.log('✅ [EDGE-TTS] Estimated duration:', estimatedDuration, 'seconds');
+          console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
+
+          return {
+            audioBuffer: audioBuffer,
+            duration: estimatedDuration,
+          };
+          
+        } catch (cliError) {
+          console.warn('⚠️ [EDGE-TTS] CLI not available, falling back to Google TTS:', cliError instanceof Error ? cliError.message : 'Unknown error');
+          
+          // Fallback to Google TTS when Edge TTS CLI is not available (e.g., on Netlify)
+          const gttsService = new GTTSService();
+          console.log('🔄 [EDGE-TTS] Using Google TTS fallback...');
+          return await gttsService.synthesize(sanitizedText, undefined, speed);
         }
-
-        // Estimate duration (rough calculation: ~150 words per minute)
-        const wordCount = sanitizedText.split(' ').length;
-        const estimatedDuration = (wordCount / 150) * 60 / speed;
-        
-        console.log('✅ [EDGE-TTS] Audio generated, size:', audioBuffer.length, 'bytes');
-        console.log('✅ [EDGE-TTS] Estimated duration:', estimatedDuration, 'seconds');
-        console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
-
-        return {
-          audioBuffer: audioBuffer,
-          duration: estimatedDuration,
-        };
       } else {
         // Client-side: use HTTP API
         const response = await fetch('/api/edge-tts', {
