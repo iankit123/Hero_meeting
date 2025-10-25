@@ -31,6 +31,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [copied, setCopied] = useState(false);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
   const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
@@ -2202,6 +2203,28 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     }
   };
 
+  const toggleScreenShare = async () => {
+    if (!room) return;
+    
+    try {
+      if (!isScreenSharing) {
+        // Start screen sharing
+        await room.localParticipant.setScreenShareEnabled(true);
+        setIsScreenSharing(true);
+        console.log('🖥️ [SCREEN] Screen sharing started');
+      } else {
+        // Stop screen sharing
+        await room.localParticipant.setScreenShareEnabled(false);
+        setIsScreenSharing(false);
+        console.log('🖥️ [SCREEN] Screen sharing stopped');
+      }
+    } catch (error) {
+      console.error('❌ [SCREEN] Error toggling screen share:', error);
+      setIsScreenSharing(false);
+    }
+  };
+
+
   const handleSttProviderSwitch = async (newProvider: 'webspeech' | 'deepgram', shouldBroadcast: boolean = true) => {
     try {
       const currentParticipantName = participantNameRef.current;
@@ -2350,7 +2373,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     if (room) {
       await room.disconnect();
     }
-    window.location.href = '/dashboard';
+    // Redirect to dashboard with feedback tab active
+    window.location.href = '/dashboard?tab=feedback';
   };
 
   const handleNameSubmit = (name: string) => {
@@ -2408,7 +2432,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
           </h2>
           <p style={{ color: '#9ca3af', marginBottom: '24px' }}>{error}</p>
           <button
-            onClick={() => window.location.href = '/dashboard'}
+            onClick={() => window.location.href = '/dashboard?tab=feedback'}
             className="btn btn-primary"
           >
             Back to Home
@@ -2758,30 +2782,38 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             </svg>
           </button>
           
-          <button style={{
-            width: '48px',
-            height: '48px',
+          {/* Screen Share Button */}
+          <button 
+            onClick={toggleScreenShare}
+            style={{
+              width: '48px',
+              height: '48px',
               borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
               transition: 'all 0.3s ease',
-              background: 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
-              border: '2px solid rgba(59, 130, 246, 0.3)'
-          }}
-          onMouseOver={(e) => {
-            e.currentTarget.style.transform = 'scale(1.05)';
-            e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
-          }}
-          onMouseOut={(e) => {
-            e.currentTarget.style.transform = 'scale(1)';
-            e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
-          }}>
+              background: isScreenSharing 
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' 
+                : 'linear-gradient(135deg, #374151 0%, #4b5563 100%)',
+              border: `2px solid ${isScreenSharing ? 'rgba(16, 185, 129, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`
+            }}
+            onMouseOver={(e) => {
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 12px 24px rgba(0, 0, 0, 0.3)';
+            }}
+            onMouseOut={(e) => {
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = '0 8px 16px rgba(0, 0, 0, 0.2)';
+            }}
+            title={isScreenSharing ? 'Stop Screen Share' : 'Start Screen Share'}
+          >
             <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
             </svg>
           </button>
+
           
           <button 
             onClick={leaveMeeting} 

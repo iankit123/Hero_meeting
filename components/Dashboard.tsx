@@ -3,8 +3,8 @@ import { useRouter } from 'next/router';
 
 interface DashboardProps {
   children?: React.ReactNode;
-  activeTab?: 'meetings' | 'past-meetings';
-  onTabChange?: (tab: 'meetings' | 'past-meetings') => void;
+  activeTab?: 'meetings' | 'past-meetings' | 'feedback';
+  onTabChange?: (tab: 'meetings' | 'past-meetings' | 'feedback') => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings', onTabChange }) => {
@@ -73,7 +73,7 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
     }
   }, [router]);
 
-  const handleTabClick = (tab: 'meetings' | 'past-meetings') => {
+  const handleTabClick = (tab: 'meetings' | 'past-meetings' | 'feedback') => {
     if (onTabChange) {
       onTabChange(tab);
     }
@@ -319,6 +319,44 @@ const Dashboard: React.FC<DashboardProps> = ({ children, activeTab = 'meetings',
               <circle cx="12" cy="9" r="1" />
             </svg>
             {!sidebarCollapsed && <span>Past Meetings</span>}
+          </button>
+
+          {/* Feedback */}
+          <button
+            onClick={() => handleTabClick('feedback')}
+            style={{
+              width: '100%',
+              padding: sidebarCollapsed ? '12px 0' : '12px 20px',
+              background: activeTab === 'feedback' ? 'rgba(102, 126, 234, 0.2)' : 'transparent',
+              border: 'none',
+              borderLeft: activeTab === 'feedback' ? '3px solid #667eea' : '3px solid transparent',
+              color: activeTab === 'feedback' ? '#667eea' : '#94a3b8',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '600',
+              transition: 'all 0.2s',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start'
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== 'feedback') {
+                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                e.currentTarget.style.color = 'white';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== 'feedback') {
+                e.currentTarget.style.backgroundColor = 'transparent';
+                e.currentTarget.style.color = '#94a3b8';
+              }
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            {!sidebarCollapsed && <span>Feedback</span>}
           </button>
         </nav>
 
