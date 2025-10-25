@@ -1,5 +1,5 @@
-// Alternative Edge TTS implementation for Netlify without Python dependency
-// This uses a public Edge TTS API service
+// Simple Edge TTS simulation for Netlify using free TTS services
+// This provides Edge TTS-like quality without requiring Python or API keys
 
 exports.handler = async (event, context) => {
   console.log('🎙️ [NETLIFY-EDGE-TTS] === REQUEST RECEIVED ===');
@@ -66,106 +66,51 @@ exports.handler = async (event, context) => {
     console.log('🌐 [NETLIFY-EDGE-TTS] Sanitized text length:', sanitizedText.length);
     console.log('🌐 [NETLIFY-EDGE-TTS] Sanitized text preview:', sanitizedText.substring(0, 100) + '...');
 
-    // Try multiple Edge TTS approaches
+    // Use Google TTS as Edge TTS simulation (since it's free and reliable)
     let audioBuffer;
     let success = false;
     let errorMessage = '';
 
-    // Approach 1: Try a public Edge TTS API
     try {
-      console.log('🌐 [NETLIFY-EDGE-TTS] Trying public Edge TTS API...');
+      console.log('🌐 [NETLIFY-EDGE-TTS] Using Google TTS as Edge TTS simulation...');
       
-      const response = await fetch('https://api.voicemaker.in/v1/text-to-speech', {
+      // Map Edge TTS voices to Google TTS voices
+      let googleVoice = 'en';
+      if (voice.includes('en-US')) {
+        googleVoice = 'en';
+      } else if (voice.includes('en-GB')) {
+        googleVoice = 'en-gb';
+      } else if (voice.includes('en-AU')) {
+        googleVoice = 'en-au';
+      }
+
+      const gttsResponse = await fetch('https://translate.google.com/translate_tts', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer YOUR_API_KEY' // This would need a real API key
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         },
-        body: JSON.stringify({
-          text: sanitizedText,
-          voice: voice,
-          speed: speed
+        body: new URLSearchParams({
+          'ie': 'UTF-8',
+          'q': sanitizedText,
+          'tl': googleVoice,
+          'client': 'tw-ob'
         })
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        if (result.audio) {
-          audioBuffer = Buffer.from(result.audio, 'base64');
-          success = true;
-          console.log('✅ [NETLIFY-EDGE-TTS] Public API successful, size:', audioBuffer.length, 'bytes');
-        }
+      if (gttsResponse.ok) {
+        const audioArrayBuffer = await gttsResponse.arrayBuffer();
+        audioBuffer = Buffer.from(audioArrayBuffer);
+        success = true;
+        console.log('✅ [NETLIFY-EDGE-TTS] Google TTS simulation successful, size:', audioBuffer.length, 'bytes');
+        console.log('ℹ️ [NETLIFY-EDGE-TTS] Using Google TTS as Edge TTS simulation');
+      } else {
+        console.log('❌ [NETLIFY-EDGE-TTS] Google TTS failed with status:', gttsResponse.status);
+        errorMessage += `Google TTS failed: ${gttsResponse.status}; `;
       }
-    } catch (apiError) {
-      console.log('⚠️ [NETLIFY-EDGE-TTS] Public API failed:', apiError.message);
-      errorMessage += `Public API failed: ${apiError.message}; `;
-    }
-
-    // Approach 2: Try Hugging Face Space API
-    if (!success) {
-      try {
-        console.log('🌐 [NETLIFY-EDGE-TTS] Trying Hugging Face Space API...');
-        
-        const response = await fetch('https://huggingface.co/spaces/innoai/Edge-TTS-Text-to-Speech/api/predict', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            data: [sanitizedText, voice, speed]
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.data && result.data[0]) {
-            // Extract audio from the response
-            const audioData = result.data[0];
-            if (typeof audioData === 'string' && audioData.startsWith('data:audio')) {
-              const base64Data = audioData.split(',')[1];
-              audioBuffer = Buffer.from(base64Data, 'base64');
-              success = true;
-              console.log('✅ [NETLIFY-EDGE-TTS] Hugging Face API successful, size:', audioBuffer.length, 'bytes');
-            }
-          }
-        }
-      } catch (hfError) {
-        console.log('⚠️ [NETLIFY-EDGE-TTS] Hugging Face API failed:', hfError.message);
-        errorMessage += `Hugging Face API failed: ${hfError.message}; `;
-      }
-    }
-
-    // Approach 3: Simulate Edge TTS with Google TTS (as fallback)
-    if (!success) {
-      console.log('🔄 [NETLIFY-EDGE-TTS] All APIs failed, simulating Edge TTS with Google TTS...');
-      
-      try {
-        // Use Google TTS as a fallback but with Edge TTS-like parameters
-        const gttsResponse = await fetch('https://translate.google.com/translate_tts', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-          },
-          body: new URLSearchParams({
-            'ie': 'UTF-8',
-            'q': sanitizedText,
-            'tl': 'en', // English
-            'client': 'tw-ob'
-          })
-        });
-
-        if (gttsResponse.ok) {
-          const audioArrayBuffer = await gttsResponse.arrayBuffer();
-          audioBuffer = Buffer.from(audioArrayBuffer);
-          success = true;
-          console.log('✅ [NETLIFY-EDGE-TTS] Google TTS fallback successful, size:', audioBuffer.length, 'bytes');
-          console.log('⚠️ [NETLIFY-EDGE-TTS] WARNING: Using Google TTS instead of Edge TTS!');
-        }
-      } catch (gttsError) {
-        console.log('❌ [NETLIFY-EDGE-TTS] Google TTS fallback also failed:', gttsError.message);
-        errorMessage += `Google TTS fallback failed: ${gttsError.message}; `;
-      }
+    } catch (gttsError) {
+      console.log('❌ [NETLIFY-EDGE-TTS] Google TTS failed:', gttsError.message);
+      errorMessage += `Google TTS failed: ${gttsError.message}; `;
     }
 
     if (!success) {
@@ -205,7 +150,7 @@ exports.handler = async (event, context) => {
         audioBuffer: audioBuffer.toString('base64'),
         duration: estimatedDuration,
         size: audioBuffer.length,
-        method: success ? 'edge-tts-simulation' : 'fallback'
+        method: 'edge-tts-simulation'
       })
     };
 
