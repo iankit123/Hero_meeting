@@ -32,7 +32,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
-  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts'>('gtts');
+  const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
@@ -63,7 +63,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const interruptionPhrases = [
     /\b(ok|okay|got it|stop|enough|that's enough|thank you|thanks)\b/i,
     /\b(stop talking|be quiet|shut up|cut it out)\b/i,
-    /\b(interrupt|skip|next|move on)\b/i,
+    /\b(interrupt|skip)\b/i,
     /\b(ok|stop)\s+(latest|funny|ladies)\b/i, // Handle cases like "ok latest", "stop funny"
     /\b(that's|that is)\s+(enough|good|fine)\b/i
   ];
@@ -79,7 +79,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const roomRef = useRef<Room | null>(null);
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
-  const ttsProviderRef = useRef<'elevenlabs' | 'gtts'>('gtts');
+  const ttsProviderRef = useRef<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
   const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
   
   // Hero query accumulation - per participant using Map
@@ -1641,7 +1641,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Broadcast TTS provider change to all participants
-  const broadcastTtsProviderChange = async (provider: 'elevenlabs' | 'gtts') => {
+  const broadcastTtsProviderChange = async (provider: 'elevenlabs' | 'gtts' | 'edgetts') => {
     const currentRoom = roomRef.current;
     const currentParticipantName = participantNameRef.current;
     
@@ -2298,7 +2298,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     await handleSttProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
-  const handleTtsProviderSwitch = async (newProvider: 'elevenlabs' | 'gtts', shouldBroadcast: boolean = true) => {
+  const handleTtsProviderSwitch = async (newProvider: 'elevenlabs' | 'gtts' | 'edgetts', shouldBroadcast: boolean = true) => {
     try {
       const currentParticipantName = participantNameRef.current;
       console.log('🔄 [TTS] === SWITCHING TTS PROVIDER ===');
@@ -2321,7 +2321,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : 'Google TTS'} TTS`,
+        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : newProvider === 'gtts' ? 'Google TTS' : 'Edge TTS'} TTS`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -2341,8 +2341,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Wrapper for UI-triggered TTS provider toggle
-  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts') => {
-    const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : 'elevenlabs');
+  const toggleTTSProvider = async (newProvider?: 'elevenlabs' | 'gtts' | 'edgetts') => {
+    const targetProvider = newProvider || (ttsProvider === 'elevenlabs' ? 'gtts' : ttsProvider === 'gtts' ? 'edgetts' : 'elevenlabs');
     await handleTtsProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
@@ -3060,7 +3060,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             <select
               value={ttsProvider}
               onChange={(e) => {
-                const newProvider = e.target.value as 'elevenlabs' | 'gtts';
+                const newProvider = e.target.value as 'elevenlabs' | 'gtts' | 'edgetts';
                 if (newProvider !== ttsProvider) {
                   toggleTTSProvider(newProvider);
                 }
@@ -3088,6 +3088,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             >
               <option value="elevenlabs">ElevenLabs</option>
               <option value="gtts">Google TTS</option>
+              <option value="edgetts">Edge TTS</option>
             </select>
           </div>
         </div>

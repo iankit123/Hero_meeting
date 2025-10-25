@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const llmService = createLLMService();
       
       // Use TTS provider from request or fallback to environment variable
-      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' || 'gtts';
+      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' | 'edgetts' || 'edgetts';
       const ttsService = createTTSService(selectedTtsProvider);
       
       console.log(`🎵 [TTS] Selected TTS Provider: ${selectedTtsProvider}`);
