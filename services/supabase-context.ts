@@ -400,9 +400,9 @@ export class SupabaseContextService {
   }
 
   /**
-   * Get meetings by organization
+   * Get meetings by organization with calculated participant names
    */
-  async getMeetingsByOrg(orgName: string, limit: number = 50): Promise<Meeting[]> {
+  async getMeetingsByOrg(orgName: string, limit: number = 50): Promise<any[]> {
     if (!this.isEnabled) {
       console.warn('⚠️ [SUPABASE] Service not enabled - check environment variables');
       return [];
@@ -428,26 +428,39 @@ export class SupabaseContextService {
 
       console.log(`✅ [SUPABASE] Retrieved ${data?.length || 0} meetings for org: ${orgName} (normalized: ${normalizedOrgName})`);
       
-      // Debug: Log first meeting if exists
-      if (data && data.length > 0) {
-        console.log(`📊 [SUPABASE] First meeting:`, {
-          id: data[0].id,
-          room_name: data[0].room_name,
-          org_name: data[0].org_name,
-          started_at: data[0].started_at
-        });
-      } else {
+      if (!data || data.length === 0) {
         console.warn(`⚠️ [SUPABASE] No meetings found for org_name = "${normalizedOrgName}"`);
-        
-        // Debug: Check if ANY meetings exist
-        const { data: allMeetings } = await this.supabase
-          .from('meetings')
-          .select('org_name')
-          .limit(10);
-        console.log(`🔍 [SUPABASE] Sample org_names in database:`, allMeetings?.map(m => `"${m.org_name}"`));
+        return [];
       }
+
+      // For each meeting, get unique participant names from transcripts
+      const meetingsWithParticipants = await Promise.all(data.map(async (meeting) => {
+        // Get unique speakers from transcripts for this meeting
+        const { data: transcripts } = await this.supabase
+          .from('transcripts')
+          .select('speaker')
+          .eq('room_name', meeting.room_name)
+          .eq('org_name', normalizedOrgName);
+
+        if (transcripts && transcripts.length > 0) {
+          // Get unique participant names (exclude 'system' and 'Hero')
+          const uniqueSpeakers = [...new Set(
+            transcripts
+              .map(t => t.speaker)
+              .filter(s => s && s !== 'system' && s !== 'Hero' && !s.toLowerCase().includes('hero'))
+          )];
+
+          return {
+            ...meeting,
+            participant_names: uniqueSpeakers,
+            participant_count: uniqueSpeakers.length || meeting.participant_count || 1
+          };
+        }
+
+        return meeting;
+      }));
       
-      return data || [];
+      return meetingsWithParticipants;
     } catch (error) {
       console.error('❌ [SUPABASE] Error fetching meetings for org:', error);
       return [];
