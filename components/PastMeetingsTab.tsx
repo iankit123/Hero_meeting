@@ -29,12 +29,6 @@ const PastMeetingsTab: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  // Load cached data immediately, then refresh in background
-  useEffect(() => {
-    loadCachedMeetings();
-    loadMeetings(true); // Background refresh
-  }, [loadMeetings]);
-
   // Load cached meetings from localStorage
   const loadCachedMeetings = () => {
     try {
@@ -129,6 +123,12 @@ const PastMeetingsTab: React.FC = () => {
       setIsRefreshing(false);
     }
   }, []);
+
+  // Load cached data immediately, then refresh in background
+  useEffect(() => {
+    loadCachedMeetings();
+    loadMeetings(true); // Background refresh
+  }, [loadMeetings]);
 
   const handleViewTranscript = async (meeting: Meeting) => {
     try {
