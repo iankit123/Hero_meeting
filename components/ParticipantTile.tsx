@@ -46,14 +46,17 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
     console.log(`🔧 [TILE] Setting up tracks for ${participant.identity} (isLocal: ${isLocal})`);
     console.log(`🔧 [TILE] videoRef.current exists:`, !!videoRef.current);
     
+    // Capture the current videoRef value to avoid stale closure
+    const currentVideoRef = videoRef.current;
+    
     const handleTrackSubscribed = (track: any) => {
       console.log(`📥 [TILE] Track subscribed - kind: ${track.kind}, participant: ${participant.identity}`);
-      if (track.kind === Track.Kind.Video && videoRef.current) {
-        track.attach(videoRef.current);
+      if (track.kind === Track.Kind.Video && currentVideoRef) {
+        track.attach(currentVideoRef);
         setHasVideo(true);
         console.log(`✅ [TILE] Video track attached for ${participant.identity}`);
         // Force play
-        videoRef.current.play().catch(err => {
+        currentVideoRef.play().catch(err => {
           console.warn('⚠️ [TILE] Video autoplay blocked:', err);
         });
       } else if (track.kind === Track.Kind.Audio && audioRef.current && !isLocal) {
@@ -177,7 +180,6 @@ export const ParticipantTile: React.FC<ParticipantTileProps> = ({
       
       // Cleanup tracks
       const cleanupPublications = Array.from(participant.trackPublications.values());
-      const currentVideoRef = videoRef.current;
       cleanupPublications.forEach((publication: any) => {
         if (publication.track && currentVideoRef) {
           publication.track.detach(currentVideoRef);

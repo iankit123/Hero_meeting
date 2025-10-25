@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import TranscriptModal from './TranscriptModal';
 
 interface Meeting {
@@ -33,7 +33,7 @@ const PastMeetingsTab: React.FC = () => {
   useEffect(() => {
     loadCachedMeetings();
     loadMeetings(true); // Background refresh
-  }, []);
+  }, [loadMeetings]);
 
   // Load cached meetings from localStorage
   const loadCachedMeetings = () => {
@@ -79,7 +79,7 @@ const PastMeetingsTab: React.FC = () => {
     }
   };
 
-  const loadMeetings = async (background = false) => {
+  const loadMeetings = useCallback(async (background = false) => {
     if (!background) {
       setIsLoading(true);
     } else {
@@ -128,7 +128,7 @@ const PastMeetingsTab: React.FC = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  };
+  }, []);
 
   const handleViewTranscript = async (meeting: Meeting) => {
     try {

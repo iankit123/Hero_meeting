@@ -199,9 +199,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             console.error('❌ [EDGE-TTS-API] Error details:', {
               name: error.name,
               message: error.message,
-              code: error.code,
-              errno: error.errno,
-              syscall: error.syscall
+              code: (error as any).code,
+              errno: (error as any).errno,
+              syscall: (error as any).syscall
             });
             reject(error);
           });
