@@ -279,6 +279,11 @@ export class EdgeTTSService implements TTSService {
             const apiUrl = `${baseUrl}/api/edge-tts`;
             
             console.log('🌐 [EDGE-TTS] Trying HTTP API:', apiUrl);
+            console.log('🌐 [EDGE-TTS] Request payload:', {
+              text: sanitizedText.substring(0, 50) + '...',
+              voice: voiceId,
+              speed: speed
+            });
             
             const response = await fetch(apiUrl, {
               method: 'POST',
@@ -292,13 +297,25 @@ export class EdgeTTSService implements TTSService {
               }),
             });
 
+            console.log('🌐 [EDGE-TTS] HTTP API response status:', response.status);
+            console.log('🌐 [EDGE-TTS] HTTP API response headers:', Object.fromEntries(response.headers.entries()));
+
             if (!response.ok) {
-              throw new Error(`HTTP API failed: ${response.status}`);
+              const errorText = await response.text();
+              console.error('❌ [EDGE-TTS] HTTP API error response:', errorText);
+              throw new Error(`HTTP API failed: ${response.status} - ${errorText}`);
             }
 
             const result = await response.json();
+            console.log('🌐 [EDGE-TTS] HTTP API response data:', {
+              success: result.success,
+              duration: result.duration,
+              size: result.size,
+              audioBufferLength: result.audioBuffer ? result.audioBuffer.length : 'undefined'
+            });
             
             if (!result.success) {
+              console.error('❌ [EDGE-TTS] API returned error:', result.error);
               throw new Error(result.error || 'Unknown API error');
             }
 
@@ -315,7 +332,8 @@ export class EdgeTTSService implements TTSService {
             };
             
           } catch (apiError) {
-            console.warn('⚠️ [EDGE-TTS] HTTP API failed, falling back to Google TTS:', apiError instanceof Error ? apiError.message : 'Unknown error');
+            console.error('❌ [EDGE-TTS] HTTP API failed:', apiError instanceof Error ? apiError.message : 'Unknown error');
+            console.error('❌ [EDGE-TTS] API error stack:', apiError instanceof Error ? apiError.stack : 'No stack trace');
             
             // Final fallback to Google TTS
             const gttsService = new GTTSService();
