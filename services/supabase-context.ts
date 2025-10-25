@@ -444,11 +444,11 @@ export class SupabaseContextService {
 
         if (transcripts && transcripts.length > 0) {
           // Get unique participant names (exclude 'system' and 'Hero')
-          const uniqueSpeakers = [...new Set(
+          const uniqueSpeakers = Array.from(new Set(
             transcripts
               .map(t => t.speaker)
               .filter(s => s && s !== 'system' && s !== 'Hero' && !s.toLowerCase().includes('hero'))
-          )];
+          ));
 
           return {
             ...meeting,
