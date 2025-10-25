@@ -28,17 +28,25 @@ export class EdgeTTSService implements TTSService {
   constructor() {
     // Use full URL for server-side, relative URL for client-side
     if (typeof window === 'undefined') {
-      // Server-side (API routes)
-      const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3000}`;
-      // Ensure protocol and remove trailing slash
-      let appUrl = rawAppUrl.trim();
-      if (!/^https?:\/\//i.test(appUrl)) {
-        appUrl = `https://${appUrl}`;
+      // Server-side (API routes running in Vercel/Netlify/etc.) need an absolute URL
+      const candidates = [
+        process.env.NEXT_PUBLIC_APP_URL,
+        process.env.NEXT_PUBLIC_SITE_URL,
+        process.env.SITE_URL,          // Netlify
+        process.env.URL,               // Netlify (primary site URL)
+        process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined,
+      ].filter(Boolean) as string[];
+
+      const origin = candidates.length > 0 ? candidates[0] : undefined;
+
+      if (origin) {
+        this.baseUrl = `${origin.replace(/\/$/, '')}/api/tts-edge`;
+      } else {
+        // Fallback to relative path for environments that can resolve it, otherwise throw helpful error at runtime
+        this.baseUrl = '/api/tts-edge';
       }
-      appUrl = appUrl.replace(/\/$/, '');
-      this.baseUrl = `${appUrl}/api/tts-edge`;
     } else {
-      // Client-side
+      // Client-side can use relative URL
       this.baseUrl = '/api/tts-edge';
     }
   }
@@ -57,40 +65,37 @@ export class EdgeTTSService implements TTSService {
     }
 
     try {
-      console.log('🌐 [EDGE-TTS] Sending request to Edge TTS API...');
+      if (typeof window === 'undefined') {
+        // Direct library call on serverless to avoid HTTP hop and CORS/base URL issues
+        const { EdgeTTS } = require('@andresaya/edge-tts');
+        const tts = new EdgeTTS();
+        await tts.synthesize(sanitizedText, voiceId);
+        const audioBuffer: Buffer = tts.toBuffer();
+        const duration: number = tts.getDuration();
+        console.log('✅ [EDGE-TTS] Audio generated (server), size:', audioBuffer.length, 'bytes', 'duration:', duration);
+        console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
+        return { audioBuffer, duration };
+      }
+
+      // Client-side fallback path (not typically used)
+      console.log('🌐 [EDGE-TTS] Sending request to Edge TTS API (client fallback)...');
       const response = await fetch(this.baseUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: sanitizedText,
-          voice: voiceId
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: sanitizedText, voice: voiceId }),
       });
 
-      console.log('📡 [EDGE-TTS] API response status:', response.status);
-      console.log('📡 [EDGE-TTS] API response ok:', response.ok);
-
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('❌ [EDGE-TTS] API error response:', errorData);
-        throw new Error(`Edge TTS API error: ${response.status} ${response.statusText}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('❌ [EDGE-TTS] API error response:', errorText);
+        throw new Error(`Edge TTS API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const audioBuffer = Buffer.from(await response.arrayBuffer());
-      console.log('✅ [EDGE-TTS] Audio buffer received, size:', audioBuffer.length, 'bytes');
-      
-      // Get duration from response header or estimate
       const durationHeader = response.headers.get('X-Duration');
       const duration = durationHeader ? parseFloat(durationHeader) : sanitizedText.length * 0.06;
-      console.log('✅ [EDGE-TTS] Duration:', duration, 'seconds');
-
-      console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
-      return {
-        audioBuffer,
-        duration,
-      };
+      console.log('✅ [EDGE-TTS] Audio buffer received (client), size:', audioBuffer.length, 'bytes');
+      return { audioBuffer, duration };
     } catch (error) {
       console.error('❌ [EDGE-TTS] Error:', error);
       throw error;
