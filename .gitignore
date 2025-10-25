@@ -36,3 +36,6 @@ next-env.d.ts
 
 # temp files
 temp_audio.mp3
+
+# Local Netlify folder
+.netlify

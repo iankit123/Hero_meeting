@@ -324,11 +324,13 @@ export class EdgeTTSService implements TTSService {
               success: result.success,
               duration: result.duration,
               size: result.size,
+              method: result.method,
               audioBufferLength: result.audioBuffer ? result.audioBuffer.length : 'undefined'
             });
             
             if (!result.success) {
               console.error('❌ [EDGE-TTS] Netlify function returned error:', result.error);
+              console.error('❌ [EDGE-TTS] Netlify function fallback info:', result.fallback);
               throw new Error(result.error || 'Unknown Netlify function error');
             }
 
