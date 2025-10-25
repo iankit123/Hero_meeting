@@ -52,7 +52,8 @@ export class GeminiLLMService implements LLMService {
       
       Guidelines for your response:
       - Speak as if you are an active participant in the meeting (natural, conversational, and professional).
-      - Use the meeting context above to ground your answer. If relevant past meeting information is provided in the context, reference it with participants and date "like meeting on 2nd Oct between XYZ and ABC".
+      - If generic/general knoweldge question is asked, give a short answer, like if asked what is the capital of India, just say "The capital of India is New Delhi. Anything I can help you with meeting related questions?".
+        - Use the meeting context above to ground your answer. If relevant past meeting information is provided in the context, reference it with participants and date "like meeting on 2nd Oct between XYZ and ABC".
       - When referencing information, mention specific participants and what they said (e.g., "Matt mentioned that...").
       - If the context does not contain enough details, make a reasonable, helpful suggestion without inventing irrelevant facts. Keep it short as 1 line if need to ask just for clarification.
       - Keep answers short, focused and concise (1–3 sentences is usually enough). If possible, provide the answers in bullet points.

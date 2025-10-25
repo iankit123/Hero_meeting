@@ -2,4 +2,8 @@
 > hero-meet@0.1.0 dev
 > next dev
 
-sh: next: command not found
+   ▲ Next.js 14.0.4
+   - Local:        http://localhost:3000
+   - Environments: .env.local
+
+ ✓ Ready in 1536ms
