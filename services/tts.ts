@@ -29,9 +29,14 @@ export class EdgeTTSService implements TTSService {
     // Use full URL for server-side, relative URL for client-side
     if (typeof window === 'undefined') {
       // Server-side (API routes)
-      this.baseUrl = process.env.NEXT_PUBLIC_APP_URL 
-        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/tts-edge`
-        : 'http://localhost:3003/api/tts-edge';
+      const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+      // Ensure protocol and remove trailing slash
+      let appUrl = rawAppUrl.trim();
+      if (!/^https?:\/\//i.test(appUrl)) {
+        appUrl = `https://${appUrl}`;
+      }
+      appUrl = appUrl.replace(/\/$/, '');
+      this.baseUrl = `${appUrl}/api/tts-edge`;
     } else {
       // Client-side
       this.baseUrl = '/api/tts-edge';
