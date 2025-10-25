@@ -79,7 +79,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const roomRef = useRef<Room | null>(null);
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
-  const ttsProviderRef = useRef<'elevenlabs' | 'gtts' | 'edgetts'>('gtts');
+  const ttsProviderRef = useRef<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
   const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
   
   // Hero query accumulation - per participant using Map
@@ -1919,6 +1919,19 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const data = await response.json();
       console.log('\n📥 [FRONTEND] === HERO RESPONSE RECEIVED ===');
       console.log('📥 [FRONTEND] Full API response:', data);
+      console.log('🎵 [FRONTEND] TTS Provider used by server:', data.ttsProvider);
+      console.log('🎵 [FRONTEND] TTS Service used by server:', data.ttsServiceUsed);
+      console.log('🎵 [FRONTEND] Requested TTS Provider:', ttsProviderRef.current);
+      
+      // Check for TTS provider mismatch
+      if (data.ttsProvider && ttsProviderRef.current && data.ttsProvider !== ttsProviderRef.current) {
+        console.warn('⚠️ [FRONTEND] TTS Provider mismatch!');
+        console.warn('⚠️ [FRONTEND] Requested:', ttsProviderRef.current);
+        console.warn('⚠️ [FRONTEND] Actually used:', data.ttsProvider);
+        console.warn('⚠️ [FRONTEND] Service used:', data.ttsServiceUsed);
+      } else if (data.ttsProvider && ttsProviderRef.current) {
+        console.log('✅ [FRONTEND] TTS Provider match:', data.ttsProvider);
+      }
       
       if (data.success && data.response) {
         console.log('✅ [FRONTEND] Hero response successful!');

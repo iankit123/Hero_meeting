@@ -60,7 +60,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const llmService = createLLMService();
       
       // Use TTS provider from request or fallback to environment variable
-      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' | 'edgetts' || 'gtts';
+      const selectedTtsProvider = ttsProvider || process.env.TTS_PROVIDER as 'elevenlabs' | 'gtts' | 'edgetts' || 'edgetts';
       const ttsService = createTTSService(selectedTtsProvider);
       
       console.log(`🎵 [TTS] Selected TTS Provider: ${selectedTtsProvider}`);
@@ -69,6 +69,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`🎵 [TTS] TTS Service constructor:`, ttsService.constructor.name);
       console.log(`🎵 [TTS] TTS Service methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(ttsService)));
       console.log(`🎵 [TTS] TTS Service has synthesize method:`, typeof ttsService.synthesize === 'function');
+      console.log(`🎵 [TTS] === TTS SERVICE DETAILS ===`);
+      console.log(`🎵 [TTS] Requested provider: ${ttsProvider}`);
+      console.log(`🎵 [TTS] Environment provider: ${process.env.TTS_PROVIDER}`);
+      console.log(`🎵 [TTS] Final selected provider: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] Service class name: ${ttsService.constructor.name}`);
+      console.log(`🎵 [TTS] === END TTS SERVICE DETAILS ===`);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
@@ -248,6 +254,8 @@ Question: ${finalQuestion}`;
         response: llmResponse.text,
         audioBuffer: ttsResult.audioBuffer.toString('base64'),
         duration: ttsResult.duration,
+        ttsProvider: selectedTtsProvider,
+        ttsServiceUsed: ttsService.constructor.name,
       });
 
     } else {
