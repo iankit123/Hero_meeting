@@ -23,7 +23,20 @@ function sanitizeText(text: string): string {
 
 // -------------------- EDGE TTS --------------------
 export class EdgeTTSService implements TTSService {
-  private baseUrl = '/api/tts-edge';
+  private baseUrl: string;
+  
+  constructor() {
+    // Use full URL for server-side, relative URL for client-side
+    if (typeof window === 'undefined') {
+      // Server-side (API routes)
+      this.baseUrl = process.env.NEXT_PUBLIC_APP_URL 
+        ? `${process.env.NEXT_PUBLIC_APP_URL}/api/tts-edge`
+        : 'http://localhost:3003/api/tts-edge';
+    } else {
+      // Client-side
+      this.baseUrl = '/api/tts-edge';
+    }
+  }
 
   async synthesize(text: string, voiceId: string = 'en-US-AriaNeural', speed?: number): Promise<TTSResult> {
     console.log('🎙️ [EDGE-TTS] === SYNTHESIZE START ===');
