@@ -207,11 +207,16 @@ export class EdgeTTSService implements TTSService {
     }
 
     try {
-      console.log('🌐 [EDGE-TTS] Generating audio via API...');
+      console.log('🌐 [EDGE-TTS] === SYNTHESIZE START ===');
+      console.log('🌐 [EDGE-TTS] Text length:', sanitizedText.length);
+      console.log('🌐 [EDGE-TTS] Voice:', voiceId);
+      console.log('🌐 [EDGE-TTS] Speed:', speed);
+      console.log('🌐 [EDGE-TTS] Environment:', typeof window === 'undefined' ? 'SERVER' : 'CLIENT');
       
       // For server-side usage, we need to use a different approach
       // Import the edge-tts functionality directly instead of making HTTP calls
       if (typeof window === 'undefined') {
+        console.log('🌐 [EDGE-TTS] Running on server-side, attempting Edge TTS...');
         // Server-side: try edge-tts CLI first, fallback to HTTP API, then Google TTS
         try {
           const { spawn } = await import('child_process');
@@ -271,7 +276,12 @@ export class EdgeTTSService implements TTSService {
           };
           
         } catch (cliError) {
-          console.warn('⚠️ [EDGE-TTS] CLI not available, trying HTTP API:', cliError instanceof Error ? cliError.message : 'Unknown error');
+          console.error('❌ [EDGE-TTS] CLI failed:', cliError instanceof Error ? cliError.message : 'Unknown error');
+          console.error('❌ [EDGE-TTS] CLI error details:', {
+            name: cliError instanceof Error ? cliError.name : 'Unknown',
+            message: cliError instanceof Error ? cliError.message : 'Unknown error',
+            stack: cliError instanceof Error ? cliError.stack : 'No stack trace'
+          });
           
           // Try HTTP API as second fallback
           try {
@@ -336,9 +346,11 @@ export class EdgeTTSService implements TTSService {
             console.error('❌ [EDGE-TTS] API error stack:', apiError instanceof Error ? apiError.stack : 'No stack trace');
             
             // Final fallback to Google TTS
+            console.log('🔄 [EDGE-TTS] All Edge TTS methods failed, falling back to Google TTS...');
             const gttsService = new GTTSService();
-            console.log('🔄 [EDGE-TTS] Using Google TTS fallback...');
-            return await gttsService.synthesize(sanitizedText, undefined, speed);
+            const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
+            console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
+            return fallbackResult;
           }
         }
       } else {
@@ -380,8 +392,26 @@ export class EdgeTTSService implements TTSService {
       }
       
     } catch (error) {
+      console.error('❌ [EDGE-TTS] === SYNTHESIS FAILED ===');
       console.error('❌ [EDGE-TTS] Error:', error);
-      throw new Error(`Edge TTS synthesis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('❌ [EDGE-TTS] Error type:', typeof error);
+      console.error('❌ [EDGE-TTS] Error details:', {
+        name: error instanceof Error ? error.name : 'Unknown',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
+      
+      // Final fallback to Google TTS
+      console.log('🔄 [EDGE-TTS] Final fallback to Google TTS...');
+      try {
+        const gttsService = new GTTSService();
+        const fallbackResult = await gttsService.synthesize(sanitizedText, undefined, speed);
+        console.log('✅ [EDGE-TTS] Google TTS fallback successful, size:', fallbackResult.audioBuffer.length, 'bytes');
+        return fallbackResult;
+      } catch (fallbackError) {
+        console.error('❌ [EDGE-TTS] Google TTS fallback also failed:', fallbackError);
+        throw new Error(`Edge TTS synthesis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   }
 }

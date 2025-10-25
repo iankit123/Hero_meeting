@@ -65,6 +65,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       console.log(`🎵 [TTS] Selected TTS Provider: ${selectedTtsProvider}`);
       console.log(`🎵 [TTS] TTS Service created for: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] TTS Service type:`, typeof ttsService);
+      console.log(`🎵 [TTS] TTS Service constructor:`, ttsService.constructor.name);
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
@@ -197,9 +199,17 @@ Question: ${finalQuestion}`;
 
       // Generate TTS audio with fallback
       let ttsResult;
+      console.log(`🎵 [TTS] === SYNTHESIS START ===`);
+      console.log(`🎵 [TTS] Provider: ${selectedTtsProvider}`);
+      console.log(`🎵 [TTS] Text length: ${cleanTextForTTS.length}`);
+      console.log(`🎵 [TTS] Text preview: ${cleanTextForTTS.substring(0, 100)}...`);
+      
       try {
+        console.log(`🎵 [TTS] Calling ttsService.synthesize()...`);
         ttsResult = await ttsService.synthesize(cleanTextForTTS);
         console.log('✅ [TTS] Successfully generated audio');
+        console.log(`🎵 [TTS] Audio buffer size: ${ttsResult.audioBuffer.length} bytes`);
+        console.log(`🎵 [TTS] Audio duration: ${ttsResult.duration} seconds`);
       } catch (ttsError) {
         console.error('❌ [TTS] Initial TTS failed:', ttsError);
         
