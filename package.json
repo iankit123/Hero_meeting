@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "chmod +x netlify-build.sh && ./netlify-build.sh",
+    "build:next": "next build",
     "start": "next start",
     "lint": "next lint",
-    "bot": "tsx bot/hero.ts"
+    "bot": "tsx bot/hero.ts",
+    "postinstall": "pip install edge-tts || echo 'Edge TTS installation failed, will use fallback'"
   },
   "dependencies": {
     "@google/generative-ai": "^0.2.1",

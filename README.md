@@ -34,7 +34,7 @@ Hero Meet is a production-ready web application that combines video conferencing
 - **Video Infrastructure**: LiveKit Cloud
 - **STT**: Web Speech API (default) + Deepgram Streaming API (premium)
 - **LLM**: Google Gemini API (default) + Groq LLM (configurable)
-- **TTS**: Edge TTS (default, free) + Google Text-to-Speech (free) + ElevenLabs (premium)
+- **TTS**: Google Text-to-Speech (default) + ElevenLabs (premium)
 - **Database**: Supabase (PostgreSQL with vector search)
 - **Embeddings**: Hugging Face Inference API
 
@@ -102,7 +102,7 @@ GROQ_API_KEY=your-groq-api-key
 GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 
 # TTS Configuration
-TTS_PROVIDER=edgetts
+TTS_PROVIDER=gtts
 ELEVENLABS_API_KEY=your-elevenlabs-api-key
 
 # Supabase Configuration
@@ -369,8 +369,6 @@ npm run bot my-meeting-room
    - Build command: `npm run build`
    - Publish directory: `.next`
 5. Deploy!
-
-**Note on Edge TTS**: Edge TTS CLI is not available in Netlify's serverless environment. The app automatically falls back to Google TTS when Edge TTS CLI is not found. This ensures your app works seamlessly in production without any configuration changes.
 
 ### Environment Variables for Production
 

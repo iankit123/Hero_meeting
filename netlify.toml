@@ -4,18 +4,18 @@
 
 [build.environment]
   NODE_VERSION = "18"
+  PYTHON_VERSION = "3.9"
 
-# Edge TTS CLI is not available in Netlify's serverless environment
-# The app will automatically fallback to Google TTS when Edge TTS CLI is not found
-# This is handled gracefully in the EdgeTTSService class
+# Install edge-tts during build process
+[build.processing]
+  skip_processing = false
 
+# Functions configuration for serverless functions
+[functions]
+  directory = "netlify/functions"
+
+# Redirects for Next.js
 [[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  from = "/*"
+  to = "/index.html"
   status = 200
-
-# For better performance, we can also add caching headers
-[[headers]]
-  for = "/api/edge-tts"
-  [headers.values]
-    Cache-Control = "no-cache"
