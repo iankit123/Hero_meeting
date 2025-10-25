@@ -67,6 +67,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log(`🎵 [TTS] TTS Service created for: ${selectedTtsProvider}`);
       console.log(`🎵 [TTS] TTS Service type:`, typeof ttsService);
       console.log(`🎵 [TTS] TTS Service constructor:`, ttsService.constructor.name);
+      console.log(`🎵 [TTS] TTS Service methods:`, Object.getOwnPropertyNames(Object.getPrototypeOf(ttsService)));
+      console.log(`🎵 [TTS] TTS Service has synthesize method:`, typeof ttsService.synthesize === 'function');
 
       // Check for Hero/Hiro trigger phrases (hey hero/hiro, hi hero/hiro, hello hero/hiro, or just hero/hiro)
       const triggerPhrase = /(hey|hi|hello)\s+(hero|hiro)|^\s*(hero|hiro)\b/i;
@@ -206,10 +208,19 @@ Question: ${finalQuestion}`;
       
       try {
         console.log(`🎵 [TTS] Calling ttsService.synthesize()...`);
+        console.log(`🎵 [TTS] Service type: ${ttsService.constructor.name}`);
+        console.log(`🎵 [TTS] Text length: ${cleanTextForTTS.length}`);
+        console.log(`🎵 [TTS] Text preview: ${cleanTextForTTS.substring(0, 100)}...`);
+        
+        const startTime = Date.now();
         ttsResult = await ttsService.synthesize(cleanTextForTTS);
+        const endTime = Date.now();
+        
         console.log('✅ [TTS] Successfully generated audio');
+        console.log(`🎵 [TTS] Synthesis took: ${endTime - startTime}ms`);
         console.log(`🎵 [TTS] Audio buffer size: ${ttsResult.audioBuffer.length} bytes`);
         console.log(`🎵 [TTS] Audio duration: ${ttsResult.duration} seconds`);
+        console.log(`🎵 [TTS] Service used: ${ttsService.constructor.name}`);
       } catch (ttsError) {
         console.error('❌ [TTS] Initial TTS failed:', ttsError);
         

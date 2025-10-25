@@ -57,44 +57,68 @@ except Exception as e:
     sys.exit(1)
 `;
 
-  return new Promise((resolve, reject) => {
-    const pythonProcess = spawn('python3', ['-c', pythonScript], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      timeout: 30000 // 30 second timeout
-    });
+        return new Promise((resolve, reject) => {
+          console.log('🐍 [EDGE-TTS-PYTHON] Spawning Python process...');
+          console.log('🐍 [EDGE-TTS-PYTHON] Python script length:', pythonScript.length);
+          console.log('🐍 [EDGE-TTS-PYTHON] Text to synthesize:', text.substring(0, 50) + '...');
+          
+          const pythonProcess = spawn('python3', ['-c', pythonScript], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            timeout: 30000 // 30 second timeout
+          });
 
-    let stdout = '';
-    let stderr = '';
+          console.log('🐍 [EDGE-TTS-PYTHON] Python process spawned with PID:', pythonProcess.pid);
 
-    pythonProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
+          let stdout = '';
+          let stderr = '';
 
-    pythonProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+          pythonProcess.stdout.on('data', (data) => {
+            const chunk = data.toString();
+            stdout += chunk;
+            console.log('🐍 [EDGE-TTS-PYTHON] stdout chunk:', chunk.substring(0, 100) + '...');
+          });
 
-    pythonProcess.on('close', (code) => {
-      if (code === 0 && stdout.trim()) {
-        try {
-          const audioBuffer = Buffer.from(stdout.trim(), 'base64');
-          console.log('✅ [EDGE-TTS-PYTHON] Audio generated, size:', audioBuffer.length, 'bytes');
-          resolve(audioBuffer);
-        } catch (error) {
-          console.error('❌ [EDGE-TTS-PYTHON] Failed to decode base64:', error);
-          reject(new Error('Failed to decode audio data'));
-        }
-      } else {
-        console.error('❌ [EDGE-TTS-PYTHON] Python process failed:', stderr);
-        reject(new Error(`Python process failed: ${stderr}`));
-      }
-    });
+          pythonProcess.stderr.on('data', (data) => {
+            const chunk = data.toString();
+            stderr += chunk;
+            console.log('🐍 [EDGE-TTS-PYTHON] stderr chunk:', chunk);
+          });
 
-    pythonProcess.on('error', (error) => {
-      console.error('❌ [EDGE-TTS-PYTHON] Python process error:', error);
-      reject(error);
-    });
-  });
+          pythonProcess.on('close', (code) => {
+            console.log('🐍 [EDGE-TTS-PYTHON] Python process closed with code:', code);
+            console.log('🐍 [EDGE-TTS-PYTHON] stdout length:', stdout.length);
+            console.log('🐍 [EDGE-TTS-PYTHON] stderr length:', stderr.length);
+            
+            if (code === 0 && stdout.trim()) {
+              try {
+                const audioBuffer = Buffer.from(stdout.trim(), 'base64');
+                console.log('✅ [EDGE-TTS-PYTHON] Audio generated, size:', audioBuffer.length, 'bytes');
+                resolve(audioBuffer);
+              } catch (error) {
+                console.error('❌ [EDGE-TTS-PYTHON] Failed to decode base64:', error);
+                console.error('❌ [EDGE-TTS-PYTHON] stdout content:', stdout.substring(0, 200));
+                reject(new Error('Failed to decode audio data'));
+              }
+            } else {
+              console.error('❌ [EDGE-TTS-PYTHON] Python process failed with code:', code);
+              console.error('❌ [EDGE-TTS-PYTHON] stderr:', stderr);
+              console.error('❌ [EDGE-TTS-PYTHON] stdout:', stdout.substring(0, 200));
+              reject(new Error(`Python process failed: ${stderr}`));
+            }
+          });
+
+          pythonProcess.on('error', (error) => {
+            console.error('❌ [EDGE-TTS-PYTHON] Python process error:', error);
+            console.error('❌ [EDGE-TTS-PYTHON] Error details:', {
+              name: error.name,
+              message: error.message,
+              code: (error as any).code,
+              errno: (error as any).errno,
+              syscall: (error as any).syscall
+            });
+            reject(error);
+          });
+        });
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -145,15 +169,50 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('🌐 [EDGE-TTS-API] Sanitized text length:', sanitizedText.length);
     console.log('🌐 [EDGE-TTS-API] Sanitized text preview:', sanitizedText.substring(0, 100) + '...');
 
-    // Try Python-based Edge TTS first (more reliable on Netlify)
-    let audioBuffer: Buffer;
-    
-    try {
-      console.log('🐍 [EDGE-TTS-API] Attempting Python-based Edge TTS...');
-      audioBuffer = await generateAudioWithPython(sanitizedText, voice, speed);
-      console.log('✅ [EDGE-TTS-API] Python-based Edge TTS successful');
-    } catch (pythonError) {
-      console.warn('⚠️ [EDGE-TTS-API] Python-based Edge TTS failed, trying CLI:', pythonError instanceof Error ? pythonError.message : 'Unknown error');
+          // Try Python-based Edge TTS first (more reliable on Netlify)
+          let audioBuffer: Buffer;
+          
+          try {
+            console.log('🐍 [EDGE-TTS-API] Attempting Python-based Edge TTS...');
+            console.log('🐍 [EDGE-TTS-API] Checking Python availability...');
+            
+            // First check if Python is available
+            const pythonCheck = await new Promise((resolve, reject) => {
+              const pythonProcess = spawn('python3', ['--version'], {
+                stdio: ['pipe', 'pipe', 'pipe'],
+                timeout: 5000
+              });
+
+              let stdout = '';
+              let stderr = '';
+
+              pythonProcess.stdout.on('data', (data) => {
+                stdout += data.toString();
+              });
+
+              pythonProcess.stderr.on('data', (data) => {
+                stderr += data.toString();
+              });
+
+              pythonProcess.on('close', (code) => {
+                if (code === 0) {
+                  resolve({ success: true, version: stdout.trim() });
+                } else {
+                  reject(new Error(`Python not available: ${stderr}`));
+                }
+              });
+
+              pythonProcess.on('error', (error) => {
+                reject(error);
+              });
+            });
+
+            console.log('✅ [EDGE-TTS-API] Python check result:', pythonCheck);
+            
+            audioBuffer = await generateAudioWithPython(sanitizedText, voice, speed);
+            console.log('✅ [EDGE-TTS-API] Python-based Edge TTS successful');
+          } catch (pythonError) {
+            console.warn('⚠️ [EDGE-TTS-API] Python-based Edge TTS failed, trying CLI:', pythonError instanceof Error ? pythonError.message : 'Unknown error');
       
       // Fallback to CLI approach
       try {

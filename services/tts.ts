@@ -283,19 +283,19 @@ export class EdgeTTSService implements TTSService {
             stack: cliError instanceof Error ? cliError.stack : 'No stack trace'
           });
           
-          // Try HTTP API as second fallback
+          // Try Netlify function as second fallback
           try {
             const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://heromeet.netlify.app';
-            const apiUrl = `${baseUrl}/api/edge-tts`;
+            const functionUrl = `${baseUrl}/.netlify/functions/edge-tts`;
             
-            console.log('🌐 [EDGE-TTS] Trying HTTP API:', apiUrl);
+            console.log('🌐 [EDGE-TTS] Trying Netlify function:', functionUrl);
             console.log('🌐 [EDGE-TTS] Request payload:', {
               text: sanitizedText.substring(0, 50) + '...',
               voice: voiceId,
               speed: speed
             });
             
-            const response = await fetch(apiUrl, {
+            const response = await fetch(functionUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -307,17 +307,17 @@ export class EdgeTTSService implements TTSService {
               }),
             });
 
-            console.log('🌐 [EDGE-TTS] HTTP API response status:', response.status);
-            console.log('🌐 [EDGE-TTS] HTTP API response headers:', Object.fromEntries(response.headers.entries()));
+            console.log('🌐 [EDGE-TTS] Netlify function response status:', response.status);
+            console.log('🌐 [EDGE-TTS] Netlify function response headers:', Object.fromEntries(response.headers.entries()));
 
             if (!response.ok) {
               const errorText = await response.text();
-              console.error('❌ [EDGE-TTS] HTTP API error response:', errorText);
-              throw new Error(`HTTP API failed: ${response.status} - ${errorText}`);
+              console.error('❌ [EDGE-TTS] Netlify function error response:', errorText);
+              throw new Error(`Netlify function failed: ${response.status} - ${errorText}`);
             }
 
             const result = await response.json();
-            console.log('🌐 [EDGE-TTS] HTTP API response data:', {
+            console.log('🌐 [EDGE-TTS] Netlify function response data:', {
               success: result.success,
               duration: result.duration,
               size: result.size,
@@ -325,14 +325,14 @@ export class EdgeTTSService implements TTSService {
             });
             
             if (!result.success) {
-              console.error('❌ [EDGE-TTS] API returned error:', result.error);
-              throw new Error(result.error || 'Unknown API error');
+              console.error('❌ [EDGE-TTS] Netlify function returned error:', result.error);
+              throw new Error(result.error || 'Unknown Netlify function error');
             }
 
             // Convert base64 back to buffer
             const finalBuffer = Buffer.from(result.audioBuffer, 'base64');
             
-            console.log('✅ [EDGE-TTS] HTTP API audio generated, size:', finalBuffer.length, 'bytes');
+            console.log('✅ [EDGE-TTS] Netlify function audio generated, size:', finalBuffer.length, 'bytes');
             console.log('✅ [EDGE-TTS] Duration:', result.duration, 'seconds');
             console.log('✅ [EDGE-TTS] === SYNTHESIZE COMPLETE ===\n');
 
@@ -341,9 +341,9 @@ export class EdgeTTSService implements TTSService {
               duration: result.duration,
             };
             
-          } catch (apiError) {
-            console.error('❌ [EDGE-TTS] HTTP API failed:', apiError instanceof Error ? apiError.message : 'Unknown error');
-            console.error('❌ [EDGE-TTS] API error stack:', apiError instanceof Error ? apiError.stack : 'No stack trace');
+          } catch (functionError) {
+            console.error('❌ [EDGE-TTS] Netlify function failed:', functionError instanceof Error ? functionError.message : 'Unknown error');
+            console.error('❌ [EDGE-TTS] Function error stack:', functionError instanceof Error ? functionError.stack : 'No stack trace');
             
             // Final fallback to Google TTS
             console.log('🔄 [EDGE-TTS] All Edge TTS methods failed, falling back to Google TTS...');
@@ -354,8 +354,16 @@ export class EdgeTTSService implements TTSService {
           }
         }
       } else {
-        // Client-side: use HTTP API
-        const response = await fetch('/api/edge-tts', {
+        // Client-side: use Netlify function
+        console.log('🌐 [EDGE-TTS] Client-side: using Netlify function...');
+        console.log('🌐 [EDGE-TTS] Function URL: /.netlify/functions/edge-tts');
+        console.log('🌐 [EDGE-TTS] Request payload:', {
+          text: sanitizedText.substring(0, 50) + '...',
+          voice: voiceId,
+          speed: speed
+        });
+        
+        const response = await fetch('/.netlify/functions/edge-tts', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -367,15 +375,26 @@ export class EdgeTTSService implements TTSService {
           }),
         });
 
+        console.log('🌐 [EDGE-TTS] Netlify function response status:', response.status);
+        console.log('🌐 [EDGE-TTS] Netlify function response headers:', Object.fromEntries(response.headers.entries()));
+
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || `HTTP ${response.status}`);
+          const errorText = await response.text();
+          console.error('❌ [EDGE-TTS] Netlify function error response:', errorText);
+          throw new Error(`Netlify function failed: ${response.status} - ${errorText}`);
         }
 
         const result = await response.json();
+        console.log('🌐 [EDGE-TTS] Netlify function response data:', {
+          success: result.success,
+          duration: result.duration,
+          size: result.size,
+          audioBufferLength: result.audioBuffer ? result.audioBuffer.length : 'undefined'
+        });
         
         if (!result.success) {
-          throw new Error(result.error || 'Unknown API error');
+          console.error('❌ [EDGE-TTS] Netlify function returned error:', result.error);
+          throw new Error(result.error || 'Unknown Netlify function error');
         }
 
         // Convert base64 back to buffer
@@ -418,13 +437,18 @@ export class EdgeTTSService implements TTSService {
 
 // -------------------- FACTORY --------------------
 export function createTTSService(provider: TTSProvider = 'edgetts'): TTSService {
+  console.log(`🎵 [TTS-FACTORY] Creating TTS service for provider: ${provider}`);
+  
   switch (provider) {
     case 'gtts':
+      console.log(`🎵 [TTS-FACTORY] Creating Google TTS service`);
       return new GTTSService();
     case 'edgetts':
+      console.log(`🎵 [TTS-FACTORY] Creating Edge TTS service`);
       return new EdgeTTSService();
     case 'elevenlabs':
     default:
+      console.log(`🎵 [TTS-FACTORY] Creating ElevenLabs TTS service`);
       return new ElevenLabsTTSService();
   }
 }
