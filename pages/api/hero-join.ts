@@ -133,7 +133,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // === General vs Meeting heuristic ===
       const qLower = finalQuestion.toLowerCase();
-      const mentionsMeeting = /(meeting|minutes|notes|summary|agenda|discussion|action items|participants|org|organization|project|ticket|sprint|retro|standup|call|yesterday|last time)/i.test(qLower);
+      const mentionsMeeting = /(meeting|minutes|notes|summary|agenda|discussion|discussed|action items|participants|org|organization|project|ticket|sprint|retro|standup|call|yesterday|last time)/i.test(qLower);
       const genericFacty = /(general knowledge|capital|who is|which|what is|when is|define|explain|country|math|formula|weather|distance|population|president|prime minister|news|time in|how to|why)/i.test(qLower);
       const hasPastContext = !!pastMeetingContext && pastMeetingContext.trim().length > 0;
       

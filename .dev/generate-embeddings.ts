@@ -17,9 +17,7 @@ if (!supabaseUrl || !supabaseKey) {
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Hugging Face client - using the new endpoint
-const hf = new HfInference(process.env.HUGGINGFACE_API_KEY, {
-  baseURL: 'https://router.huggingface.co'
-});
+const hf = new HfInference(process.env.HUGGINGFACE_API_KEY);
 const model = 'sentence-transformers/all-MiniLM-L6-v2';
 
 async function generateEmbeddings() {
