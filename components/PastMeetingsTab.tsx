@@ -110,20 +110,12 @@ const PastMeetingsTab: React.FC = () => {
                       .map((t: Transcript) => t.speaker)
                   )
                 );
-                return { 
-                  ...meeting, 
-                  participant_names: uniqueNames,
-                  participant_count: uniqueNames.length || meeting.participant_count || 1
-                };
+                return { ...meeting, participant_names: uniqueNames };
               }
             } catch (error) {
               console.error('Error fetching participant names:', error);
             }
-            return { 
-              ...meeting, 
-              participant_names: [],
-              participant_count: meeting.participant_count || 1
-            };
+            return { ...meeting, participant_names: [] };
           })
         );
         

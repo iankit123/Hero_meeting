@@ -2545,7 +2545,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 }
               }}
             >
-              {copied ? '✓ Copied!' : 'Copy Meeting Link'}
+              {copied ? '✓ Copied!' : 'Copy Meeting Link to Invite Others'}
             </button>
           </div>
         </div>
