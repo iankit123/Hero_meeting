@@ -188,6 +188,8 @@ Question: ${finalQuestion}`;
         .replace(/#{1,6}\s*/g, '') // Remove headers
         .replace(/`(.*?)`/g, '$1') // Remove code backticks
         .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links, keep text
+        .replace(/^[+\-•]\s*/gm, '') // Remove bullet points (+, -, •)
+        .replace(/\n[+\-•]\s*/g, '. ') // Remove bullets with newlines
         .replace(/\n{2,}/g, '. ') // Replace multiple newlines with periods
         .replace(/\n/g, ' ') // Replace single newlines with spaces
         .replace(/\s+/g, ' ') // Normalize whitespace
