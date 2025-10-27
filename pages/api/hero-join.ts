@@ -101,8 +101,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (orgName) {
         console.log(`\n🔍 [PAST-MEETINGS] ===== PAST MEETING RETRIEVAL START =====`);
         console.log(`🔍 [PAST-MEETINGS] Org name: "${orgName}"`);
+        console.log(`🔍 [PAST-MEETINGS] Room name: "${roomName}" (will be excluded)`);
         console.log(`🔍 [PAST-MEETINGS] Question: "${finalQuestion}"`);
-        pastMeetingContext = await meetingContextService.getRelevantContext(orgName, finalQuestion, 2);
+        pastMeetingContext = await meetingContextService.getRelevantContext(orgName, finalQuestion, 2, roomName);
         if (pastMeetingContext) {
           console.log(`✅ [PAST-MEETINGS] Retrieved context (${pastMeetingContext.length} chars):`);
           console.log(pastMeetingContext.substring(0, 500) + '...');

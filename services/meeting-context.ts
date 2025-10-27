@@ -19,8 +19,9 @@ class MeetingContextService {
    * Get relevant past meeting context using HYBRID search
    * Tier 1: Search meeting summaries (fast, broad context)
    * Tier 2: Search transcripts from relevant meetings (detailed, specific)
+   * @param excludeRoomName - Exclude this room from the search (current meeting)
    */
-  async getRelevantContext(orgName: string, query: string, limit: number = 10): Promise<string> {
+  async getRelevantContext(orgName: string, query: string, limit: number = 10, excludeRoomName?: string): Promise<string> {
     try {
       // Check if embeddings are configured
       if (!hfEmbeddingsService.isConfigured()) {
@@ -160,9 +161,21 @@ class MeetingContextService {
       }
 
       console.log(`✅ [RAG] Found ${transcriptResults.length} relevant transcripts`);
+      
+      // Filter out transcripts from the current meeting if excludeRoomName is provided
+      const filteredTranscripts = excludeRoomName 
+        ? transcriptResults.filter((t: any) => t.room_name !== excludeRoomName)
+        : transcriptResults;
+      
+      if (filteredTranscripts.length === 0) {
+        console.log('ℹ️ [RAG] No relevant context found (all results were from current meeting), falling back to recent');
+        return this.getRecentContext(orgName, 2);
+      }
+      
+      console.log(`✅ [RAG] Using ${filteredTranscripts.length} transcripts after filtering out current meeting`);
 
       // Extract and validate speaker names to prevent hallucination
-      const validSpeakers = new Set(transcriptResults.map((t: any) => t.speaker).filter(Boolean));
+      const validSpeakers = new Set(filteredTranscripts.map((t: any) => t.speaker).filter(Boolean));
       console.log(`🔍 [RAG] Valid speakers found: ${Array.from(validSpeakers).join(', ')}`);
 
       // Format context for LLM with speaker validation and temporal awareness
@@ -170,7 +183,7 @@ class MeetingContextService {
       context += `**Note: Only the following people are mentioned in our records: ${Array.from(validSpeakers).join(', ')}**\n`;
       context += `**IMPORTANT: Do not assume people participated in meetings unless explicitly shown below.**\n\n`;
       
-      transcriptResults.forEach((result: any, idx: number) => {
+      filteredTranscripts.forEach((result: any, idx: number) => {
         const similarity = (result.similarity * 100).toFixed(0);
         const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
           month: 'long', 
