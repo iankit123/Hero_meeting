@@ -124,15 +124,85 @@ class MeetingContextService {
             if (relevantTranscripts.length > 0) {
               console.log(`✅ [RAG-TIER2] Found ${relevantTranscripts.length} specific quotes from relevant meetings`);
               context += '\n**Specific Details:**\n';
-              relevantTranscripts.forEach((result: any, idx: number) => {
-                const similarity = (result.similarity * 100).toFixed(0);
-                const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
-                  month: 'long', 
-                  day: 'numeric' 
-                });
+              
+              // Apply filtering: exclude Hero responses and questions-only
+              const filteredTier2Transcripts = relevantTranscripts.filter((result: any) => {
                 const speaker = result.speaker || 'Unknown';
-                context += `\n- [${similarity}%] ${speaker}: "${result.message}" (from meeting on ${formattedDate})\n`;
+                const speakerLower = speaker.toLowerCase();
+                
+                // Filter 1: Exclude Hero responses
+                const isHeroResponse = speakerLower.includes('hero') || 
+                                     speakerLower === 'system' || 
+                                     speakerLower === 'hero ai' ||
+                                     speakerLower.includes('hiro');
+                
+                if (isHeroResponse) {
+                  console.log(`🔇 [RAG-TIER2] Filtering out Hero response: "${result.message.substring(0, 50)}..."`);
+                  return false;
+                }
+                
+                // Filter 2: Exclude questions-only (without substantive content)
+                const message = result.message?.toLowerCase() || '';
+                const isQuestion = message.includes('?') || 
+                                  message.trim().startsWith('what ') || 
+                                  message.trim().startsWith('how ') ||
+                                  message.trim().startsWith('when ') ||
+                                  message.trim().startsWith('where ') ||
+                                  message.trim().startsWith('who ') ||
+                                  message.trim().startsWith('why ') ||
+                                  message.includes('do you') || 
+                                  message.includes('can you') || 
+                                  message.includes('could you') ||
+                                  message.includes('would you') ||
+                                  message.includes('have we') ||
+                                  message.includes('did we');
+                
+                const hasSubstantiveContent = message.includes('discussed') || 
+                  message.includes('reported') || 
+                  message.includes('suggested') || 
+                  message.includes('agreed') || 
+                  message.includes('decided') || 
+                  message.includes('proposed') ||
+                  message.includes('identified') || 
+                  message.includes('addressed') || 
+                  message.includes('resolved') ||
+                  message.includes('implemented') || 
+                  message.includes('tracked') || 
+                  message.includes('monitored') ||
+                  message.includes('decreased') || 
+                  message.includes('increased') || 
+                  message.includes('failed') ||
+                  message.includes('success') || 
+                  message.includes('rate') || 
+                  message.includes('transaction') ||
+                  message.includes('mentioned') ||
+                  message.includes('explained') ||
+                  message.includes('noted') ||
+                  message.includes('said');
+                
+                // Exclude if it's ONLY a question without substantive content
+                if (isQuestion && !hasSubstantiveContent) {
+                  console.log(`❓ [RAG-TIER2] Filtering out question-only: "${result.message.substring(0, 50)}..."`);
+                  return false;
+                }
+                
+                // Only include substantive content
+                return hasSubstantiveContent;
               });
+              
+              if (filteredTier2Transcripts.length > 0) {
+                filteredTier2Transcripts.forEach((result: any, idx: number) => {
+                  const similarity = (result.similarity * 100).toFixed(0);
+                  const formattedDate = new Date(result.created_at).toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric' 
+                  });
+                  const speaker = result.speaker || 'Unknown';
+                  context += `\n- [${similarity}%] ${speaker}: "${result.message}" (from meeting on ${formattedDate})\n`;
+                });
+              } else {
+                console.log(`⚠️ [RAG-TIER2] All transcripts filtered out (Hero responses or questions-only)`);
+              }
             }
           }
         }
@@ -174,8 +244,20 @@ class MeetingContextService {
       
       console.log(`✅ [RAG] Using ${filteredTranscripts.length} transcripts after filtering out current meeting`);
 
-      // Extract and validate speaker names to prevent hallucination
-      const validSpeakers = new Set(filteredTranscripts.map((t: any) => t.speaker).filter(Boolean));
+      // Extract and validate speaker names to prevent hallucination (exclude Hero)
+      const validSpeakers = new Set(
+        filteredTranscripts
+          .map((t: any) => t.speaker)
+          .filter((speaker: string) => {
+            if (!speaker) return false;
+            const speakerLower = speaker.toLowerCase();
+            // Exclude Hero from valid speakers list
+            return !speakerLower.includes('hero') && 
+                   speakerLower !== 'system' && 
+                   speakerLower !== 'hero ai' &&
+                   !speakerLower.includes('hiro');
+          })
+      );
       console.log(`🔍 [RAG] Valid speakers found: ${Array.from(validSpeakers).join(', ')}`);
 
       // Format context for LLM with speaker validation and temporal awareness
@@ -191,22 +273,70 @@ class MeetingContextService {
         });
         const speaker = result.speaker || 'Unknown';
         
-        // Skip messages that are only questions without substantive content
+        // FILTER 1: Exclude Hero's responses from previous meetings
+        const speakerLower = speaker.toLowerCase();
+        const isHeroResponse = speakerLower.includes('hero') || 
+                               speakerLower === 'system' || 
+                               speakerLower === 'hero ai' ||
+                               speakerLower.includes('hiro');
+        
+        if (isHeroResponse) {
+          console.log(`🔇 [RAG] Filtering out Hero response: "${result.message.substring(0, 50)}..."`);
+          return; // Skip this transcript
+        }
+        
+        // FILTER 2: Skip messages that are only questions without substantive content
         const message = result.message?.toLowerCase() || '';
-        const hasSubstantiveContent = message.includes('discussed') || message.includes('reported') || 
-          message.includes('suggested') || message.includes('agreed') || message.includes('decided') || 
-          message.includes('proposed') || message.includes('centered on') || message.includes('focused on') ||
-          message.includes('identified') || message.includes('addressed') || message.includes('resolved') ||
-          message.includes('implemented') || message.includes('tracked') || message.includes('monitored') ||
-          message.includes('decreased') || message.includes('increased') || message.includes('failed') ||
-          message.includes('success') || message.includes('rate') || message.includes('transaction');
         
-        const isOnlyQuestion = message.includes('?') && 
-          (message.includes('what') || message.includes('how') || message.includes('when') || message.includes('where') || 
-           message.includes('do you') || message.includes('can you') || message.includes('could you')) &&
-          !hasSubstantiveContent;
+        // Check if it's a question
+        const isQuestion = message.includes('?') || 
+                          message.trim().startsWith('what ') || 
+                          message.trim().startsWith('how ') ||
+                          message.trim().startsWith('when ') ||
+                          message.trim().startsWith('where ') ||
+                          message.trim().startsWith('who ') ||
+                          message.trim().startsWith('why ') ||
+                          message.includes('do you') || 
+                          message.includes('can you') || 
+                          message.includes('could you') ||
+                          message.includes('would you') ||
+                          message.includes('have we') ||
+                          message.includes('did we');
         
-        if (hasSubstantiveContent && !isOnlyQuestion) {
+        // Check for substantive content (actual discussion/decisions, not just questions)
+        const hasSubstantiveContent = message.includes('discussed') || 
+          message.includes('reported') || 
+          message.includes('suggested') || 
+          message.includes('agreed') || 
+          message.includes('decided') || 
+          message.includes('proposed') || 
+          message.includes('centered on') || 
+          message.includes('focused on') ||
+          message.includes('identified') || 
+          message.includes('addressed') || 
+          message.includes('resolved') ||
+          message.includes('implemented') || 
+          message.includes('tracked') || 
+          message.includes('monitored') ||
+          message.includes('decreased') || 
+          message.includes('increased') || 
+          message.includes('failed') ||
+          message.includes('success') || 
+          message.includes('rate') || 
+          message.includes('transaction') ||
+          message.includes('mentioned') ||
+          message.includes('explained') ||
+          message.includes('noted') ||
+          message.includes('said');
+        
+        // Exclude if it's ONLY a question without substantive content
+        if (isQuestion && !hasSubstantiveContent) {
+          console.log(`❓ [RAG] Filtering out question-only: "${result.message.substring(0, 50)}..."`);
+          return; // Skip this transcript
+        }
+        
+        // Include only substantive content (not just questions)
+        if (hasSubstantiveContent) {
           context += `\n${idx + 1}. [${similarity}% relevant] ${speaker}: "${result.message}"\n`;
           context += `   (From meeting on ${formattedDate})\n`;
         }
@@ -248,14 +378,81 @@ class MeetingContextService {
             const meetingDate = new Date(meeting.started_at).toLocaleDateString();
             let meetingContext = `\n**Previous Meeting (${meetingDate})**\n`;
             
-            // Limit to first 5 transcripts to avoid context overflow
-            transcripts.slice(0, 5).forEach((t: any) => {
+            // Filter transcripts: exclude Hero responses and questions-only
+            const filteredTranscripts = transcripts.filter((t: any) => {
               const speaker = t.speaker || 'Unknown';
-              meetingContext += `- ${speaker}: "${t.message}"\n`;
+              const speakerLower = speaker.toLowerCase();
+              
+              // Filter 1: Exclude Hero responses
+              const isHeroResponse = speakerLower.includes('hero') || 
+                                   speakerLower === 'system' || 
+                                   speakerLower === 'hero ai' ||
+                                   speakerLower.includes('hiro');
+              
+              if (isHeroResponse) {
+                return false;
+              }
+              
+              // Filter 2: Exclude questions-only (without substantive content)
+              const message = t.message?.toLowerCase() || '';
+              const isQuestion = message.includes('?') || 
+                                message.trim().startsWith('what ') || 
+                                message.trim().startsWith('how ') ||
+                                message.trim().startsWith('when ') ||
+                                message.trim().startsWith('where ') ||
+                                message.trim().startsWith('who ') ||
+                                message.trim().startsWith('why ') ||
+                                message.includes('do you') || 
+                                message.includes('can you') || 
+                                message.includes('could you') ||
+                                message.includes('would you') ||
+                                message.includes('have we') ||
+                                message.includes('did we');
+              
+              const hasSubstantiveContent = message.includes('discussed') || 
+                message.includes('reported') || 
+                message.includes('suggested') || 
+                message.includes('agreed') || 
+                message.includes('decided') || 
+                message.includes('proposed') ||
+                message.includes('identified') || 
+                message.includes('addressed') || 
+                message.includes('resolved') ||
+                message.includes('implemented') || 
+                message.includes('tracked') || 
+                message.includes('monitored') ||
+                message.includes('decreased') || 
+                message.includes('increased') || 
+                message.includes('failed') ||
+                message.includes('success') || 
+                message.includes('rate') || 
+                message.includes('transaction') ||
+                message.includes('mentioned') ||
+                message.includes('explained') ||
+                message.includes('noted') ||
+                message.includes('said');
+              
+              // Exclude if it's ONLY a question without substantive content
+              if (isQuestion && !hasSubstantiveContent) {
+                return false;
+              }
+              
+              // Only include substantive content
+              return hasSubstantiveContent;
             });
             
-            contextPieces.push(meetingContext);
-            console.log(`✅ [RAG-FALLBACK] Added context from meeting ${meeting.id}`);
+            // Limit to first 5 filtered transcripts to avoid context overflow
+            if (filteredTranscripts.length > 0) {
+              filteredTranscripts.slice(0, 5).forEach((t: any) => {
+                const speaker = t.speaker || 'Unknown';
+                meetingContext += `- ${speaker}: "${t.message}"\n`;
+              });
+              
+              contextPieces.push(meetingContext);
+              console.log(`✅ [RAG-FALLBACK] Added context from meeting ${meeting.id} (${filteredTranscripts.length} substantive transcripts)`);
+            } else {
+              console.log(`⚠️ [RAG-FALLBACK] No substantive transcripts in meeting ${meeting.id} (filtered out Hero responses and questions-only)`);
+            }
           }
         } catch (err) {
           console.warn('⚠️ [RAG-FALLBACK] Error fetching transcripts:', err);
