@@ -2340,7 +2340,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎤 ${changeSource} switched to ${newProvider === 'deepgram' ? 'Deepgram' : 'Web Speech'} STT`,
+        text: `🎤 ${changeSource} switched to ${newProvider === 'deepgram' ? 'STT Model 1' : 'STT Model 2'} STT`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -2388,7 +2388,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
       const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : newProvider === 'gtts' ? 'Google TTS' : 'Edge TTS'} TTS`,
+        text: `🎵 ${changeSource} switched to ${newProvider === 'elevenlabs' ? 'ElevenLabs' : newProvider === 'gtts' ? 'Voice 2' : 'Voice 1'} TTS`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -3103,8 +3103,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="webspeech">Web Speech API</option>
-              <option value="deepgram">Deepgram</option>
+              <option value="webspeech">STT Model 2</option>
+              <option value="deepgram">STT Model 1</option>
             </select>
           </div>
         </div>
@@ -3163,8 +3163,8 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
               }}
             >
               <option value="elevenlabs">ElevenLabs</option>
-              <option value="gtts">Google TTS</option>
-              <option value="edgetts">Edge TTS</option>
+              <option value="gtts">Voice 2</option>
+              <option value="edgetts">Voice 1</option>
             </select>
           </div>
         </div>
