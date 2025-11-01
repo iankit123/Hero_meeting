@@ -81,20 +81,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('✅ [API] Trigger detected');
       
       // Extract the question after the trigger phrase
-      let question = message.replace(triggerPhrase, '').trim();
-      
-      // Remove any remaining mentions of "Hero" or "Hiro" from the question
-      // This prevents Hero from responding to its own name mentions
-      question = question
-        .replace(/\b(hero|hiro)\b/gi, '') // Remove standalone Hero/Hiro mentions
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim();
+      const question = message.replace(triggerPhrase, '').trim();
       
       // If no specific question, provide a default greeting response
       const finalQuestion = question || 'Hello! How can I help you today?';
       
-      console.log('❓ [API] Original message:', message);
-      console.log('❓ [API] Cleaned question:', finalQuestion);
+      console.log('❓ [API] Question:', finalQuestion);
       
       // Get conversation context from storage
       const conversationContext = contextService.getContext(roomName, 15);
@@ -150,12 +142,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const classifyAsGeneral = genericFacty || (!hasPastContext && !mentionsMeeting);
 
       // Build prompts for both modes
-      const meetingPrompt = `You are Hero or Hiro (in case of a mistake), an AI assistant participating in meetings. Respond as Hero using first person ("I", "me", "my").
+      const meetingPrompt = `You are Hero (also known as Hiro - both names refer to you). You are an AI assistant participating in meetings. Always identify yourself as "Hero" or "Hiro" - both are correct names for you. Respond using first person ("I", "me", "my").
 
 RULES (MEETING MODE):
+- Your name is Hero, and you are also called Hiro - accept both as valid.
 - Use ONLY the meeting context below. Do not invent people, dates, or decisions.
 - If context lacks the answer, say: "I don't have that in my meeting notes."
-- Keep answers concise; use bullet points for multiple items.
+- Keep answers concise; format lists as simple sentences, not bullet points.
 
 Context:
 ${enhancedContext || 'NO CONTEXT AVAILABLE'}
@@ -164,7 +157,7 @@ Question: ${finalQuestion}
 
 Answer as Hero based strictly on the meeting context.`;
 
-      const generalPrompt = `You are Hero or Hiro (in case of a mistake), an AI assistant. Respond as Hero using first person ("I", "me", "my").
+      const generalPrompt = `You are Hero (also known as Hiro - both names refer to you). You are an AI assistant. Always identify yourself as "Hero" or "Hiro" - both are correct names for you. Respond using first person ("I", "me", "my").
 
 RULES (GENERAL KNOWLEDGE MODE):
 - Provide a direct, accurate answer using general knowledge.
@@ -189,15 +182,17 @@ Question: ${finalQuestion}`;
         }
       }
 
-      // Clean the response text for TTS (remove markdown formatting)
+      // Clean the response text for TTS (remove markdown formatting and bullet points)
       const cleanTextForTTS = llmResponse.text
         .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markdown
         .replace(/\*(.*?)\*/g, '$1') // Remove italic markdown
         .replace(/#{1,6}\s*/g, '') // Remove headers
         .replace(/`(.*?)`/g, '$1') // Remove code backticks
         .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove links, keep text
-        .replace(/^[+\-•]\s*/gm, '') // Remove bullet points (+, -, •)
-        .replace(/\n[+\-•]\s*/g, '. ') // Remove bullets with newlines
+        .replace(/\n\s*[+\-•]\s+/g, '. ') // Replace bullets at start of lines with periods
+        .replace(/\s+[+\-•]\s+/g, '. ') // Replace standalone bullets with periods
+        .replace(/^[+\-•]\s+/gm, '') // Remove bullets at very start of text
+        .replace(/[+\-•]/g, '') // Remove any remaining bullet characters
         .replace(/\n{2,}/g, '. ') // Replace multiple newlines with periods
         .replace(/\n/g, ' ') // Replace single newlines with spaces
         .replace(/\s+/g, ' ') // Normalize whitespace
