@@ -81,12 +81,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       console.log('✅ [API] Trigger detected');
       
       // Extract the question after the trigger phrase
-      const question = message.replace(triggerPhrase, '').trim();
+      let question = message.replace(triggerPhrase, '').trim();
+      
+      // Remove any remaining mentions of "Hero" or "Hiro" from the question
+      // This prevents Hero from responding to its own name mentions
+      question = question
+        .replace(/\b(hero|hiro)\b/gi, '') // Remove standalone Hero/Hiro mentions
+        .replace(/\s+/g, ' ') // Normalize whitespace
+        .trim();
       
       // If no specific question, provide a default greeting response
       const finalQuestion = question || 'Hello! How can I help you today?';
       
-      console.log('❓ [API] Question:', finalQuestion);
+      console.log('❓ [API] Original message:', message);
+      console.log('❓ [API] Cleaned question:', finalQuestion);
       
       // Get conversation context from storage
       const conversationContext = contextService.getContext(roomName, 15);
