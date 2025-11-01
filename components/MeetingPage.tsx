@@ -398,10 +398,54 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
     const cleanText = text.trim().toLowerCase();
     console.log('🔍 [INTERRUPT] Checking text for interruption phrases:', cleanText);
     
-    for (const phrase of interruptionPhrases) {
-      if (phrase.test(cleanText)) {
-        console.log('🛑 [INTERRUPT] Interruption phrase detected:', text, 'matched pattern:', phrase);
+    // Check if text is a standalone interruption phrase (short, just stop words)
+    const words = cleanText.split(/\s+/);
+    const isShortText = words.length <= 4; // Standalone interruptions are usually short
+    
+    // Check for explicit stop commands (these always interrupt)
+    const explicitStopPatterns = [
+      /\b(stop|enough|that's enough|stop talking|be quiet|shut up|cut it out)\b/i,
+      /\b(interrupt|skip)\b/i,
+      /\b(that's|that is)\s+(enough|good|fine)\b/i
+    ];
+    
+    for (const pattern of explicitStopPatterns) {
+      if (pattern.test(cleanText)) {
+        console.log('🛑 [INTERRUPT] Explicit stop command detected:', text, 'matched pattern:', pattern);
         return true;
+      }
+    }
+    
+    // Check for "okay/ok" - only interrupt if it's standalone or followed by stop words
+    const okayPattern = /\b(ok|okay)\b/i;
+    if (okayPattern.test(cleanText)) {
+      // Only interrupt if:
+      // 1. Text is very short (just "ok" or "okay" or with stop words)
+      // 2. Followed by explicit stop words
+      const hasStopWords = /\b(got it|stop|enough|thanks|thank you)\b/i.test(cleanText);
+      const isStandalone = words.length <= 2 || (words.length <= 4 && hasStopWords);
+      
+      // Don't interrupt if "okay" is followed by a longer sentence
+      const wordsAfterOkay = cleanText.replace(/^.*?\b(ok|okay)\s+/i, '').split(/\s+/);
+      const hasLongSentence = wordsAfterOkay.length > 3 && !hasStopWords;
+      
+      if (isStandalone && !hasLongSentence) {
+        console.log('🛑 [INTERRUPT] Standalone "ok/okay" detected:', text);
+        return true;
+      } else {
+        console.log('✅ [INTERRUPT] "ok/okay" is part of longer sentence, not interrupting');
+      }
+    }
+    
+    // Check other interruption phrases (excluding ok/okay which we handled above)
+    const otherPhrases = interruptionPhrases.filter(p => !p.source.includes('ok|okay'));
+    for (const phrase of otherPhrases) {
+      if (phrase.test(cleanText)) {
+        // Double-check: don't match if it's a long sentence
+        if (isShortText || /\b(got it|stop|enough|thanks|thank you)\b/i.test(cleanText)) {
+          console.log('🛑 [INTERRUPT] Interruption phrase detected:', text, 'matched pattern:', phrase);
+          return true;
+        }
       }
     }
     
