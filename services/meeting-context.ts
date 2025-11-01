@@ -84,6 +84,49 @@ class MeetingContextService {
           
           // Skip meetings that only contain questions or inquiries (no substantive discussion)
           const summary = meeting.summary?.toLowerCase() || '';
+          const summaryOriginal = meeting.summary || '';
+          
+          // FILTER 1: Exclude Hero-centric summaries (summaries primarily about Hero's actions)
+          const heroMentions = [
+            'hero reviewed', 'hero reported', 'hero investigated', 'hero checked',
+            'hiro reviewed', 'hiro reported', 'hiro investigated',
+            ' i reviewed', ' i reported', ' i investigated', ' i checked',
+            'it was decided that i', 'it was decided that hero', 'it was decided that hiro',
+            'hero would investigate', 'hiro would investigate', 'i would investigate',
+            'i, hero or hiro', 'i, hiro or hero', 'hero or hiro would'
+          ];
+          
+          const hasHeroActions = heroMentions.some(phrase => summary.includes(phrase));
+          
+          // Count Hero actions vs participant actions
+          // Hero actions: Hero/Hiro/I reviewed/reported/investigated
+          const heroActionMatches = summary.match(/(hero|hiro|\bi\b)\s+(reviewed|reported|investigated|checked|would investigate|will investigate)/gi) || [];
+          
+          // Participant actions: exclude "reported" when it's Hero reporting
+          const participantVerbs = summary.match(/\b(discussed|suggested|agreed|decided|proposed|identified|addressed|resolved|implemented|tracked|monitored)\b/gi) || [];
+          
+          // Count "reported" only if it's not Hero reporting (check context)
+          const reportedMatches = summary.match(/\breported\b/gi) || [];
+          const heroReportedMatches = summary.match(/(hero|hiro|\bi\b)\s+reported/gi) || [];
+          const participantReportedCount = reportedMatches.length - heroReportedMatches.length;
+          
+          const participantActionMatches = [...participantVerbs];
+          if (participantReportedCount > 0) {
+            // Add participant-reported matches separately
+            for (let i = 0; i < participantReportedCount; i++) {
+              participantActionMatches.push('reported');
+            }
+          }
+          
+          // If summary is primarily about Hero's actions (more Hero actions than participant actions), exclude it
+          const isHeroCentric = hasHeroActions && heroActionMatches.length >= participantActionMatches.length;
+          
+          if (isHeroCentric) {
+            console.log(`🔇 [RAG-TIER1] Filtering out Hero-centric summary (${heroActionMatches.length} Hero actions, ${participantActionMatches.length} participant actions): "${summaryOriginal.substring(0, 100)}..."`);
+            return; // Skip this summary
+          }
+          
+          // FILTER 2: Skip summaries that are only questions or inquiries
           const hasSubstantiveContent = summary.includes('discussed') || summary.includes('reported') || 
             summary.includes('suggested') || summary.includes('agreed') || summary.includes('decided') || 
             summary.includes('proposed') || summary.includes('centered on') || summary.includes('focused on') ||
@@ -94,9 +137,36 @@ class MeetingContextService {
             (summary.includes('what') || summary.includes('how') || summary.includes('when') || summary.includes('where')) &&
             !hasSubstantiveContent;
           
-          if (hasSubstantiveContent && !isOnlyQuestions) {
-            context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
-            context += `   Summary: ${meeting.summary}\n`;
+          // FILTER 3: Exclude summaries that are primarily questions asked to Hero
+          const heroQuestionPatterns = [
+            'asked hero', 'asked hiro', 'asked if hero', 'questioned hero',
+            'hero was asked', 'hiro was asked', 'hero answered', 'hiro answered'
+          ];
+          const isHeroQuestionSummary = heroQuestionPatterns.some(pattern => summary.includes(pattern)) &&
+            !hasSubstantiveContent;
+          
+          if (hasSubstantiveContent && !isOnlyQuestions && !isHeroQuestionSummary) {
+            // Sanitize summary to remove Hero self-references while keeping participant discussions
+            let sanitizedSummary = summaryOriginal;
+            
+            // Remove Hero self-reference phrases but keep participant discussions
+            sanitizedSummary = sanitizedSummary
+              .replace(/\b(i|hero|hiro)\s+(reviewed|reported|investigated|checked|would investigate|will investigate)\s+/gi, '')
+              .replace(/\bit\s+was\s+decided\s+that\s+(i|hero|hiro)\s+(would|will)\s+/gi, 'it was decided that ')
+              .replace(/\b(i,?\s+)?(hero|hiro)\s+(or\s+)?(hero|hiro|i)\s*,?\s+(would|will|should)\s+/gi, '')
+              .replace(/\b(hero|hiro)\s+(or\s+)?(hero|hiro|i)\s*,?\s+(would|will|should)\s+/gi, '')
+              .replace(/\b(i|hero|hiro)\s+(also\s+)?(reviewed|reported|investigated)\s+/gi, '')
+              .replace(/\bwhere\s+(i|hero|hiro)\s+(reported|reviewed|investigated)\s+/gi, 'where ')
+              .replace(/\s+/g, ' ') // Clean up multiple spaces
+              .trim();
+            
+            // Only include if there's still substantive content after sanitization
+            if (sanitizedSummary.length > 20) {
+              context += `\n${idx + 1}. Meeting on ${formattedDate} [${similarity}% relevant]\n`;
+              context += `   Summary: ${sanitizedSummary}\n`;
+            } else {
+              console.log(`🔇 [RAG-TIER1] Summary became too short after sanitization, excluding: "${summaryOriginal.substring(0, 100)}..."`);
+            }
           }
         });
         
