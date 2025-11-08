@@ -32,7 +32,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
-  const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram'>('webspeech');
+  const [sttProvider, setSttProvider] = useState<'webspeech' | 'deepgram' | 'vosk'>('webspeech');
   const [ttsProvider, setTtsProvider] = useState<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
   const [transcript, setTranscript] = useState<ChatMessage[]>([]);
   const [localVideoTrack, setLocalVideoTrack] = useState<LocalTrack | null>(null);
@@ -81,7 +81,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   const participantNameRef = useRef<string>('');
   const orgNameRef = useRef<string>('');
   const ttsProviderRef = useRef<'elevenlabs' | 'gtts' | 'edgetts'>('edgetts');
-  const sttProviderRef = useRef<'webspeech' | 'deepgram'>('webspeech');
+  const sttProviderRef = useRef<'webspeech' | 'deepgram' | 'vosk'>('webspeech');
   
   // Hero query accumulation - per participant using Map
   // Each participant gets their own accumulator to prevent interference
@@ -1660,7 +1660,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Broadcast STT provider change to all participants
-  const broadcastSttProviderChange = async (provider: 'webspeech' | 'deepgram') => {
+  const broadcastSttProviderChange = async (provider: 'webspeech' | 'deepgram' | 'vosk') => {
     const currentRoom = roomRef.current;
     const currentParticipantName = participantNameRef.current;
     
@@ -2269,7 +2269,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
 
-  const handleSttProviderSwitch = async (newProvider: 'webspeech' | 'deepgram', shouldBroadcast: boolean = true) => {
+  const handleSttProviderSwitch = async (newProvider: 'webspeech' | 'deepgram' | 'vosk', shouldBroadcast: boolean = true) => {
     try {
       const currentParticipantName = participantNameRef.current;
       console.log('🔄 [STT] === SWITCHING STT PROVIDER ===');
@@ -2338,9 +2338,10 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
 
       // Add notification to transcript
       const changeSource = shouldBroadcast ? currentParticipantName : 'another participant';
+      const providerName = newProvider === 'deepgram' ? 'STT Model 1' : newProvider === 'vosk' ? 'STT Model 3 (Vosk)' : 'STT Model 2';
       addSystemTranscript({
         id: generateMessageId(),
-        text: `🎤 ${changeSource} switched to ${newProvider === 'deepgram' ? 'STT Model 1' : 'STT Model 2'} STT`,
+        text: `🎤 ${changeSource} switched to ${providerName} STT`,
         speaker: 'system',
         timestamp: Date.now(),
         isTranscript: true
@@ -2360,8 +2361,13 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
   };
 
   // Wrapper for UI-triggered STT provider toggle
-  const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram') => {
-    const targetProvider = newProvider || (sttProvider === 'webspeech' ? 'deepgram' : 'webspeech');
+  const toggleSTTProvider = async (newProvider?: 'webspeech' | 'deepgram' | 'vosk') => {
+    // Cycle through providers: webspeech -> deepgram -> vosk -> webspeech
+    const targetProvider = newProvider || (
+      sttProvider === 'webspeech' ? 'deepgram' : 
+      sttProvider === 'deepgram' ? 'vosk' : 
+      'webspeech'
+    );
     await handleSttProviderSwitch(targetProvider, true); // true = broadcast to others
   };
 
@@ -3077,7 +3083,7 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
             <select
               value={sttProvider}
               onChange={(e) => {
-                const newProvider = e.target.value as 'webspeech' | 'deepgram';
+                const newProvider = e.target.value as 'webspeech' | 'deepgram' | 'vosk';
                 if (newProvider !== sttProvider) {
                   toggleSTTProvider(newProvider);
                 }
@@ -3103,8 +3109,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="webspeech">STT Model 2</option>
-              <option value="deepgram">STT Model 1</option>
+              <option value="webspeech">STT Model 2 (WebSpeech)</option>
+              <option value="deepgram">STT Model 1 (Deepgram)</option>
+              <option value="vosk">STT Model 3 (Vosk)</option>
             </select>
           </div>
         </div>

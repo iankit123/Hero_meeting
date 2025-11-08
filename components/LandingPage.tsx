@@ -1,12 +1,35 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import { VoskSTTService } from '../services/stt';
 
 export default function LandingPage() {
   const [isCreating, setIsCreating] = useState(false);
+  const [modelPreloading, setModelPreloading] = useState(false);
   const router = useRouter();
+
+  // Preload Vosk model when landing page loads
+  useEffect(() => {
+    const preloadModel = async () => {
+      try {
+        setModelPreloading(true);
+        console.log('🔄 [LANDING] Starting Vosk model preload...');
+        await VoskSTTService.preloadModel();
+        console.log('✅ [LANDING] Vosk model preloaded successfully');
+      } catch (error) {
+        console.warn('⚠️ [LANDING] Vosk model preload failed (non-critical):', error);
+      } finally {
+        setModelPreloading(false);
+      }
+    };
+
+    // Only preload if running in browser (not SSR)
+    if (typeof window !== 'undefined') {
+      preloadModel();
+    }
+  }, []);
 
   const handleCreateMeeting = async () => {
     setIsCreating(true);

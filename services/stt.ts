@@ -533,13 +533,207 @@ export class DeepgramSTTService implements STTService {
   }
 }
 
+export class VoskSTTService implements STTService {
+  private model: any = null;
+  private recognizer: any = null;
+  private transcriptCallback?: (result: STTResult) => void;
+  private interimCallback?: (text: string) => void;
+  private audioContext?: AudioContext;
+  private processor?: ScriptProcessorNode;
+  private mediaStream?: MediaStream;
+  private isListening = false;
+  private isInitialized = false;
+  private isInitializing = false;
+  private modelRef: any = null;
+  private recognizerRef: any = null;
+
+  private readonly MODEL_URL = '/vosk-model-small-en-us-0.15.tar.gz';
+
+  constructor() {
+    console.log('🎤 [VOSK] VoskSTTService initialized');
+  }
+
+  async initializeModel(): Promise<void> {
+    if (this.isInitialized) {
+      console.log('🎤 [VOSK] Model already initialized');
+      return;
+    }
+
+    if (this.isInitializing) {
+      console.log('🎤 [VOSK] Model initialization already in progress');
+      return;
+    }
+
+    this.isInitializing = true;
+
+    try {
+      console.log('🎤 [VOSK] Loading Vosk model (this may take a moment)...');
+      
+      // Dynamically import vosk-browser to avoid SSR issues
+      const { createModel } = await import('vosk-browser');
+      
+      // Load the Vosk model
+      const model = await createModel(this.MODEL_URL);
+      this.model = model;
+      this.modelRef = model;
+      
+      console.log('✅ [VOSK] Model loaded successfully');
+      this.isInitialized = true;
+      this.isInitializing = false;
+    } catch (error) {
+      console.error('❌ [VOSK] Error loading model:', error);
+      this.isInitializing = false;
+      throw error;
+    }
+  }
+
+  async startTranscription(audioStream?: MediaStream): Promise<void> {
+    try {
+      console.log('🎤 [VOSK] Starting Vosk transcription...');
+
+      // Initialize model if not already done
+      if (!this.isInitialized) {
+        await this.initializeModel();
+      }
+
+      // Get audio stream if not provided
+      if (!audioStream) {
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 16000,
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        });
+      }
+
+      this.mediaStream = audioStream;
+
+      // Create audio context
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      this.audioContext = new AudioContextClass({ sampleRate: 16000 });
+      console.log('🎧 [VOSK] AudioContext created with sample rate:', this.audioContext.sampleRate);
+
+      // Create audio source from microphone
+      const source = this.audioContext.createMediaStreamSource(audioStream);
+
+      // Create recognizer
+      const recognizer = new this.model.KaldiRecognizer(16000);
+      recognizer.setWords(true);
+      this.recognizer = recognizer;
+      this.recognizerRef = recognizer;
+
+      // ✅ CRITICAL: Use event listeners for results
+      recognizer.on('result', (message: any) => {
+        if (message.result && message.result.text) {
+          const text = message.result.text.trim();
+          if (text && this.transcriptCallback) {
+            console.log('🎤 [VOSK] Final transcript received:', text);
+            this.transcriptCallback({
+              text: text,
+              speaker: 'user',
+              confidence: 0.9, // Vosk doesn't provide confidence, use default
+              timestamp: Date.now()
+            });
+          }
+        }
+      });
+
+      recognizer.on('partialresult', (message: any) => {
+        // Optionally show partial results
+        if (message.result && message.result.partial) {
+          const partialText = message.result.partial.trim();
+          if (partialText && this.interimCallback) {
+            this.interimCallback(partialText);
+          }
+        }
+      });
+
+      // Create script processor for audio processing
+      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      this.processor.onaudioprocess = (event: AudioProcessingEvent) => {
+        if (!this.isListening) return;
+
+        try {
+          // ✅ CRITICAL: acceptWaveform expects AudioBuffer, not Int16Array
+          recognizer.acceptWaveform(event.inputBuffer);
+        } catch (error) {
+          console.error('❌ [VOSK] acceptWaveform failed:', error);
+        }
+      };
+
+      // Connect audio nodes
+      source.connect(this.processor);
+      this.processor.connect(this.audioContext.destination);
+
+      this.isListening = true;
+      console.log('✅ [VOSK] Vosk transcription started');
+    } catch (error) {
+      console.error('❌ [VOSK] Error starting transcription:', error);
+      throw error;
+    }
+  }
+
+  stopTranscription(): void {
+    console.log('🛑 [VOSK] Stopping Vosk transcription...');
+    
+    this.isListening = false;
+
+    if (this.processor) {
+      this.processor.disconnect();
+      this.processor = undefined;
+    }
+
+    if (this.audioContext) {
+      this.audioContext.close().catch(console.error);
+      this.audioContext = undefined;
+    }
+
+    if (this.mediaStream) {
+      this.mediaStream.getTracks().forEach(track => track.stop());
+      this.mediaStream = undefined;
+    }
+
+    // Clear any pending callbacks
+    this.transcriptCallback = undefined;
+    this.interimCallback = undefined;
+
+    console.log('✅ [VOSK] Vosk transcription stopped');
+  }
+
+  onTranscript(callback: (result: STTResult) => void): void {
+    this.transcriptCallback = callback;
+  }
+
+  onInterimResult(callback: (text: string) => void): void {
+    this.interimCallback = callback;
+  }
+
+  // Helper method to preload model (called from landing page)
+  static async preloadModel(): Promise<void> {
+    try {
+      console.log('🔄 [VOSK] Preloading model...');
+      const { createModel } = await import('vosk-browser');
+      await createModel('/vosk-model-small-en-us-0.15.tar.gz');
+      console.log('✅ [VOSK] Model preloaded successfully');
+    } catch (error) {
+      console.error('❌ [VOSK] Error preloading model:', error);
+      // Don't throw - preloading is optional
+    }
+  }
+}
+
 // Factory function
-export function createSTTService(provider: 'webspeech' | 'deepgram' = 'webspeech'): STTService {
+export function createSTTService(provider: 'webspeech' | 'deepgram' | 'vosk' = 'webspeech'): STTService {
   console.log(`🎤 [STT] Creating STT service with provider: ${provider}`);
   
   switch (provider) {
     case 'deepgram':
       return new DeepgramSTTService();
+    case 'vosk':
+      return new VoskSTTService();
     case 'webspeech':
     default:
       return new WebSpeechSTTService();
