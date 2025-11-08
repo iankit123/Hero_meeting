@@ -3109,9 +3109,9 @@ export default function MeetingPage({ roomName }: MeetingPageProps) {
                 e.target.style.boxShadow = 'none';
               }}
             >
-              <option value="webspeech">STT Model 2 (WebSpeech)</option>
-              <option value="deepgram">STT Model 1 (Deepgram)</option>
-              <option value="vosk">STT Model 3 (Vosk)</option>
+              <option value="webspeech">STT Model 2</option>
+              <option value="deepgram">STT Model 1</option>
+              <option value="vosk">STT Model 3</option>
             </select>
           </div>
         </div>
